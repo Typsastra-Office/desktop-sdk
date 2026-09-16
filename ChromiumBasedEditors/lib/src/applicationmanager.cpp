@@ -109,8 +109,8 @@ CAscApplicationSettings::CAscApplicationSettings()
 
 	user_providers_path = L"";
 
-	converter_application_name    = "ONLYOFFICE";
-	converter_application_company = "Ascensio System SIA Copyright (c) 2022";
+	converter_application_name    = "Typsastra Office";
+	converter_application_company = "Typsastra. Based on ONLYOFFICE, Ascensio System SIA Copyright (c) 2022";
 
 	macroses_support = true;
 	plugins_support = true;

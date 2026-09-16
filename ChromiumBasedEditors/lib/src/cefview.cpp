@@ -1871,7 +1871,7 @@ public:
 											#ifdef CEF_VERSION_ABOVE_102
 												false,
 											#endif
-												"https://onlyoffice.com/")
+												"https://github.com/Typsastra-Office/")
 	{
 		m_pParent = NULL;
 		m_bIsLoaded = false;
