@@ -93,6 +93,29 @@ void CCefViewWidgetImpl::SetParentNull(WindowHandleId handle)
 
 #include "./cors_resource_hanler.h"
 
+namespace
+{
+	bool SetJsonBoolean(std::wstring& json, const CefString& name, bool value)
+	{
+		CefRefPtr<CefValue> root;
+		if (json.empty())
+		{
+			root = CefValue::Create();
+			root->SetDictionary(CefDictionaryValue::Create());
+		}
+		else
+		{
+			root = CefParseJSON(json, JSON_PARSER_RFC);
+			if (!root || root->GetType() != VTYPE_DICTIONARY)
+				return false;
+		}
+
+		root->GetDictionary()->SetBool(name, value);
+		json = CefWriteJSON(root, JSON_WRITER_DEFAULT).ToWString();
+		return true;
+	}
+}
+
 std::wstring GetUrlWithoutProtocol(const std::wstring& url)
 {
 	if (0 == url.find(L"http://"))
@@ -3144,6 +3167,12 @@ public:
 					pData->put_Path(NSFile::GetFileName(m_pParent->m_pInternal->m_oLocalInfo.m_oInfo.m_sFileSrc));
 
 				pData->put_FileType(m_pParent->m_pInternal->m_oLocalInfo.m_oInfo.m_nCurrentFileFormat);
+				const int nEditorType = m_pParent->m_pInternal->m_nEditorType;
+				pData->put_EnhancedUnicodeAvailable(
+					nEditorType == static_cast<int>(AscEditorType::etDocument) ||
+					nEditorType == static_cast<int>(AscEditorType::etPresentation) ||
+					nEditorType == static_cast<int>(AscEditorType::etSpreadsheet) ||
+					nEditorType == static_cast<int>(AscEditorType::etDraw));
 				if (nSaveFileType == 0)
 					m_pParent->m_pInternal->LocalFile_GetSupportSaveFormats(pData->get_SupportFormats());
 				else
@@ -4603,11 +4632,25 @@ public:
 		pSaver->m_oPrintData.m_sFrameUrl = args->GetString(2).ToWString();
 		pSaver->m_oPrintData.m_sThemesUrl = args->GetString(3).ToWString();
 		pSaver->m_oPrintData.CalculateImagePaths(false);
+		const bool hasPreselectedOutputPath = args->GetSize() > 6 && !args->GetString(6).empty();
+		// Keep the display-list document context unchanged. Local media lives in
+		// the recovery directory, so override only the image lookup root for the
+		// exact-layout desktop Save As route.
+		if (hasPreselectedOutputPath &&
+			!m_pParent->m_pInternal->m_oLocalInfo.m_oInfo.m_sRecoveryDir.empty())
+			pSaver->m_oPrintData.m_sDocumentImagesPath =
+				m_pParent->m_pInternal->m_oLocalInfo.m_oInfo.m_sRecoveryDir + L"/";
 		pSaver->m_nOutputFormat = args->GetInt(5);
 		pSaver->LoadData(args->GetString(4).ToString());
 
 		m_pParent->m_pInternal->m_pCloudSaveToDrawing = pSaver;
 		m_pParent->m_pInternal->m_pCloudSaveToDrawing->DestroyOnFinish();
+		if (hasPreselectedOutputPath)
+		{
+			m_pParent->m_pInternal->m_pCloudSaveToDrawing->m_sOutputFileName = args->GetString(6).ToWString();
+			m_pParent->m_pInternal->m_pCloudSaveToDrawing->Start(0);
+			return true;
+		}
 
 		COfficeFileFormatChecker oChecker;
 		int nFileType = pSaver->m_nOutputFormat;
@@ -7547,7 +7590,34 @@ void CCefView::Apply(NSEditorApi::CAscMenuEvent* pEvent)
 		else
 		{
 			int nFileType = pData->get_FileType();
-			m_pInternal->LocalFile_SaveStart(sPath, nFileType);
+			if (nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF ||
+				nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDFA)
+			{
+				CefRefPtr<CefFrame> frame = m_pInternal->GetBrowser()
+					? m_pInternal->GetBrowser()->GetFrame("frameEditor") : nullptr;
+				if (frame)
+				{
+					CefRefPtr<CefValue> pathValue = CefValue::Create();
+					pathValue->SetString(sPath);
+					std::wstring quotedPath = CefWriteJSON(pathValue, JSON_WRITER_DEFAULT).ToWString();
+					std::wstring code = L"window.DesktopOfflineAppDocumentSavePdfFromCurrentLayout(" +
+						std::to_wstring(nFileType) + L"," + quotedPath + L"," +
+						(pData->get_EnhancedUnicode() ? L"true" : L"false") + L");";
+					frame->ExecuteJavaScript(code, frame->GetURL(), 0);
+					break;
+				}
+			}
+			bool bOptionsReady = true;
+			if (nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF)
+				bOptionsReady = SetJsonBoolean(m_pInternal->m_oLocalInfo.m_oInfo.m_sSaveJsonParams,
+				                               "enhancedUnicode", pData->get_EnhancedUnicode());
+			if (bOptionsReady)
+				m_pInternal->LocalFile_SaveStart(sPath, nFileType);
+			else
+			{
+				m_pInternal->LocalFile_SaveEnd(1);
+				m_pInternal->m_bIsBuilding = false;
+			}
 		}
 		break;
 	}

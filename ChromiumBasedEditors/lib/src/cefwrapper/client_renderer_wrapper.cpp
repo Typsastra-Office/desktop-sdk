@@ -4328,6 +4328,8 @@ window.AscDesktopEditor.CallInFrame(\"" +
 				message->GetArgumentList()->SetString(3, arguments[2]->GetStringValue());
 				message->GetArgumentList()->SetString(4, arguments[3]->GetStringValue());
 				message->GetArgumentList()->SetInt(5, arguments[4]->GetIntValue());
+				if (arguments.size() > 5 && arguments[5]->IsString())
+					message->GetArgumentList()->SetString(6, arguments[5]->GetStringValue());
 				SEND_MESSAGE_TO_BROWSER_PROCESS(message);
 				return true;
 			}

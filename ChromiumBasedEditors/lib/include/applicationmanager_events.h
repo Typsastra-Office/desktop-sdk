@@ -1023,6 +1023,8 @@ namespace NSEditorApi
 	private:
 		int m_nId;
 		int m_nFileType;
+		bool m_bEnhancedUnicode;
+		bool m_bEnhancedUnicodeAvailable;
 		std::wstring m_sPath;
 		std::vector<int> m_arSupportFormats;
 
@@ -1031,6 +1033,8 @@ namespace NSEditorApi
 		{
 			m_nId  = -1;
 			m_nFileType = 0;
+			m_bEnhancedUnicode = false;
+			m_bEnhancedUnicodeAvailable = false;
 		}
 		virtual ~CAscLocalSaveFileDialog()
 		{
@@ -1038,6 +1042,8 @@ namespace NSEditorApi
 
 		LINK_PROPERTY_INT(Id)
 		LINK_PROPERTY_INT(FileType)
+		LINK_PROPERTY_BOOL(EnhancedUnicode)
+		LINK_PROPERTY_BOOL(EnhancedUnicodeAvailable)
 		LINK_PROPERTY_STRING(Path)
 
 		std::vector<int>& get_SupportFormats()
