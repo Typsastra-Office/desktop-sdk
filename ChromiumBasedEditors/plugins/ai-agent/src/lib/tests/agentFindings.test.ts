@@ -255,6 +255,46 @@ describe("computeFindings", () => {
     );
   });
 
+  it("flags HEADER_OVERLAP when the header extends into the body", () => {
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      page: {
+        width: 210,
+        height: 297,
+        marginLeft: 25.4,
+        marginRight: 25.4,
+        marginTop: 19.05,
+        marginBottom: 19.05,
+      },
+      header: { bottom: 25 },
+      elements: [],
+    };
+    expect(computeFindings(model).map((f) => f.code)).toContain(
+      "HEADER_OVERLAP"
+    );
+  });
+
+  it("does not flag HEADER_OVERLAP when the header fits", () => {
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      page: {
+        width: 210,
+        height: 297,
+        marginLeft: 25.4,
+        marginRight: 25.4,
+        marginTop: 19.05,
+        marginBottom: 19.05,
+      },
+      header: { bottom: 14.6 },
+      elements: [],
+    };
+    expect(computeFindings(model).map((f) => f.code)).not.toContain(
+      "HEADER_OVERLAP"
+    );
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],

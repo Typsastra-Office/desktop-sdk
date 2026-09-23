@@ -77,6 +77,8 @@ offending node so the agent can act on it directly.
 | `ORPHAN_HEADING` | advisory | a heading ends a page; its content starts on the next page |
 | `TABLE_WIDTH_OVERFLOW` | advisory | a table extends past the text column |
 | `PAGE_OVERFLOW` | advisory | content extends past the bottom of the text area |
+| `HEADER_OVERLAP` / `FOOTER_OVERLAP` | advisory | header/footer extends into the body |
+| `HEADER_CLIPPED` | advisory | header starts above the page top |
 | `STYLE_UNUSED` | advisory | a defined style that no content uses |
 
 Phase 1 adds geometry: paragraphs may carry

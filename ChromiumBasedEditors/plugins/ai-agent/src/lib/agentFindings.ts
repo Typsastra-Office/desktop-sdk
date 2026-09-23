@@ -56,6 +56,14 @@ export type PageGeometry = {
   contentHeight?: number;
 };
 
+export type BoxGeometry = {
+  distance?: number;
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+};
+
 export type ParagraphElement = {
   kind: "paragraph";
   index: number;
@@ -104,6 +112,8 @@ export type DocModel = {
   stylesDefined: string[];
   stylesUsed: string[];
   page?: PageGeometry;
+  header?: BoxGeometry;
+  footer?: BoxGeometry;
 };
 
 export const nodeIdOf = (e: DocElement): string =>
@@ -266,6 +276,44 @@ export const computeFindings = (model: DocModel): Finding[] => {
           severity: "advisory",
           nodeId: nodeIdOf(e),
           message: `Content extends past the text area (${g.bottom.toFixed(1)}mm > ${maxBottom.toFixed(1)}mm)`,
+        });
+      }
+    }
+  }
+
+  // Header / footer overlapping the body (geometry, phase 1).
+  if (model.page) {
+    const h = model.header;
+    if (h) {
+      if (
+        typeof h.bottom === "number" &&
+        h.bottom > model.page.marginTop + 0.5
+      ) {
+        findings.push({
+          code: "HEADER_OVERLAP",
+          severity: "advisory",
+          nodeId: "header",
+          message: `Header extends into the body (${h.bottom.toFixed(1)}mm > top margin ${model.page.marginTop.toFixed(1)}mm)`,
+        });
+      }
+      if (typeof h.top === "number" && h.top < -0.5) {
+        findings.push({
+          code: "HEADER_CLIPPED",
+          severity: "advisory",
+          nodeId: "header",
+          message: `Header starts above the page top (${h.top.toFixed(1)}mm)`,
+        });
+      }
+    }
+    const f = model.footer;
+    if (f && typeof f.top === "number") {
+      const limit = model.page.height - model.page.marginBottom;
+      if (f.top < limit - 0.5) {
+        findings.push({
+          code: "FOOTER_OVERLAP",
+          severity: "advisory",
+          nodeId: "footer",
+          message: `Footer extends into the body (${f.top.toFixed(1)}mm < ${limit.toFixed(1)}mm)`,
         });
       }
     }

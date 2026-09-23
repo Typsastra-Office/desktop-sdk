@@ -1590,6 +1590,8 @@ export class EditorDocumentTool {
         paragraphs?: Array<Record<string, unknown>>;
         tables?: Array<Record<string, unknown>>;
         page?: Record<string, unknown>;
+        header?: Record<string, unknown>;
+        footer?: Record<string, unknown>;
       } | null;
       if (geo && Array.isArray(geo.paragraphs)) {
         const byId = new Map<number, Record<string, unknown>>();
@@ -1633,6 +1635,43 @@ export class EditorDocumentTool {
               geo.page.contentHeight === undefined
                 ? undefined
                 : Number(geo.page.contentHeight),
+          };
+        }
+
+        if (geo.header) {
+          model.header = {
+            distance:
+              geo.header.distance === undefined
+                ? undefined
+                : Number(geo.header.distance),
+            top: geo.header.top === undefined ? undefined : Number(geo.header.top),
+            bottom:
+              geo.header.bottom === undefined
+                ? undefined
+                : Number(geo.header.bottom),
+            left: geo.header.left === undefined ? undefined : Number(geo.header.left),
+            right:
+              geo.header.right === undefined
+                ? undefined
+                : Number(geo.header.right),
+          };
+        }
+        if (geo.footer) {
+          model.footer = {
+            distance:
+              geo.footer.distance === undefined
+                ? undefined
+                : Number(geo.footer.distance),
+            top: geo.footer.top === undefined ? undefined : Number(geo.footer.top),
+            bottom:
+              geo.footer.bottom === undefined
+                ? undefined
+                : Number(geo.footer.bottom),
+            left: geo.footer.left === undefined ? undefined : Number(geo.footer.left),
+            right:
+              geo.footer.right === undefined
+                ? undefined
+                : Number(geo.footer.right),
           };
         }
 
