@@ -1,0 +1,11 @@
+{
+  "name": "header overlap",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": [],
+    "page": { "width": 210, "height": 297, "marginLeft": 25.4, "marginRight": 25.4, "marginTop": 19.05, "marginBottom": 19.05 },
+    "header": { "bottom": 25 },
+    "elements": []
+  },
+  "expect": ["HEADER_OVERLAP"]
+}

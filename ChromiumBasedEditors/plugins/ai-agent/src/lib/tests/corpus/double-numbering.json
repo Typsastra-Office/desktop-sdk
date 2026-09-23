@@ -1,0 +1,12 @@
+{
+  "name": "double numbering",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": ["Heading 1"],
+    "elements": [
+      { "kind": "paragraph", "index": 0, "id": "paragraph:10", "style": "Heading 1", "text": "1.\t1. Introduction", "numbering": true, "runs": [{ "text": "1. Introduction", "direct": false }] },
+      { "kind": "paragraph", "index": 1, "id": "paragraph:11", "style": "Normal", "text": "Body.", "numbering": false, "runs": [{ "text": "Body.", "direct": false }] }
+    ]
+  },
+  "expect": ["DOUBLE_NUMBERING"]
+}

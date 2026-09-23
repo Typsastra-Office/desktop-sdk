@@ -1,0 +1,11 @@
+{
+  "name": "widow line",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": [],
+    "elements": [
+      { "kind": "paragraph", "index": 0, "id": "paragraph:40", "style": "Normal", "text": "long", "numbering": false, "runs": [{ "text": "long", "direct": false }], "geometry": { "absPage": 0, "pagesCount": 2, "pageLines": [{ "absPage": 0, "lines": 40 }, { "absPage": 1, "lines": 1 }] } }
+    ]
+  },
+  "expect": ["WIDOW_LINE"]
+}

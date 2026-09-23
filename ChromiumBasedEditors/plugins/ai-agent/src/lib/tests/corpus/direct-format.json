@@ -1,0 +1,11 @@
+{
+  "name": "direct format override",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": ["Normal"],
+    "elements": [
+      { "kind": "paragraph", "index": 0, "id": "paragraph:50", "style": "Normal", "text": "x", "numbering": false, "runs": [{ "text": "x", "font": "Times New Roman", "direct": true }] }
+    ]
+  },
+  "expect": ["DIRECT_FORMAT_OVERRIDE"]
+}

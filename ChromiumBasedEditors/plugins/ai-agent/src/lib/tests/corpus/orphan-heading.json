@@ -1,0 +1,12 @@
+{
+  "name": "orphan heading",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": ["Heading 1"],
+    "elements": [
+      { "kind": "paragraph", "index": 0, "id": "paragraph:30", "style": "Heading 1", "text": "Intro", "numbering": true, "runs": [{ "text": "Intro", "direct": false }], "geometry": { "absPage": 0 } },
+      { "kind": "paragraph", "index": 1, "id": "paragraph:31", "style": "Normal", "text": "Body on next page.", "numbering": false, "runs": [{ "text": "Body", "direct": false }], "geometry": { "absPage": 1 } }
+    ]
+  },
+  "expect": ["ORPHAN_HEADING"]
+}

@@ -13,17 +13,21 @@ export type DiffSummary = {
 type UseFeedbackStoreProps = {
   findings: Finding[];
   diff?: DiffSummary;
+  coverage?: Record<string, string>;
   setFindings: (findings: Finding[]) => void;
   setDiff: (diff?: DiffSummary) => void;
+  setCoverage: (coverage?: Record<string, string>) => void;
   clear: () => void;
 };
 
 const useFeedbackStore = create<UseFeedbackStoreProps>((set) => ({
   findings: [],
   diff: undefined,
+  coverage: undefined,
   setFindings: (findings) => set({ findings }),
   setDiff: (diff) => set({ diff }),
-  clear: () => set({ findings: [], diff: undefined }),
+  setCoverage: (coverage) => set({ coverage }),
+  clear: () => set({ findings: [], diff: undefined, coverage: undefined }),
 }));
 
 export default useFeedbackStore;

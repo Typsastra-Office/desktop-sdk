@@ -14,6 +14,7 @@ const severityClass: Record<string, string> = {
 export const DocumentHealth = () => {
   const findings = useFeedbackStore((s) => s.findings);
   const diff = useFeedbackStore((s) => s.diff);
+  const coverage = useFeedbackStore((s) => s.coverage);
   if (!findings.length) return null;
 
   const blocking = findings.filter((f) => f.severity === "blocking").length;
@@ -63,6 +64,15 @@ export const DocumentHealth = () => {
             </li>
           ))}
         </ul>
+        {coverage ? (
+          <div className="mt-2 text-[10px] opacity-60">
+            measured:{" "}
+            {Object.entries(coverage)
+              .filter(([, v]) => v === "partial" || v === "complete")
+              .map(([k]) => k)
+              .join(", ") || "none"}
+          </div>
+        ) : null}
       </div>
     </div>
   );

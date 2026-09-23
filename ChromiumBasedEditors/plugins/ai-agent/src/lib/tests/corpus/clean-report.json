@@ -1,0 +1,15 @@
+{
+  "name": "clean report",
+  "model": {
+    "stylesDefined": ["Normal", "Heading 1"],
+    "stylesUsed": ["Normal", "Heading 1"],
+    "page": { "width": 210, "height": 297, "marginLeft": 25.4, "marginRight": 25.4, "marginTop": 25.4, "marginBottom": 25.4, "contentWidth": 159.2, "contentHeight": 246.2 },
+    "header": { "bottom": 14.6 },
+    "elements": [
+      { "kind": "toc", "index": 0, "id": "toc:0" },
+      { "kind": "paragraph", "index": 1, "id": "paragraph:1", "style": "Heading 1", "text": "Introduction", "numbering": true, "runs": [{ "text": "Introduction", "direct": false }], "geometry": { "absPage": 0 } },
+      { "kind": "paragraph", "index": 2, "id": "paragraph:2", "style": "Normal", "text": "Real content.", "numbering": false, "runs": [{ "text": "Real content.", "direct": false }], "geometry": { "absPage": 0 } }
+    ]
+  },
+  "expect": []
+}

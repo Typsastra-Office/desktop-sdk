@@ -1,0 +1,13 @@
+{
+  "name": "empty section",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": ["Heading 1"],
+    "elements": [
+      { "kind": "paragraph", "index": 0, "id": "paragraph:20", "style": "Heading 1", "text": "Empty", "numbering": true, "runs": [{ "text": "Empty", "direct": false }] },
+      { "kind": "paragraph", "index": 1, "id": "paragraph:21", "style": "Heading 1", "text": "Next", "numbering": true, "runs": [{ "text": "Next", "direct": false }] },
+      { "kind": "paragraph", "index": 2, "id": "paragraph:22", "style": "Normal", "text": "Body.", "numbering": false, "runs": [{ "text": "Body.", "direct": false }] }
+    ]
+  },
+  "expect": ["EMPTY_SECTION"]
+}

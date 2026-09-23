@@ -242,6 +242,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       const text =
         typeof result === "string" ? result : JSON.stringify(result ?? "");
       const parsed = JSON.parse(text) as {
+        coverage?: Record<string, string>;
         findings?: Array<{
           code: string;
           severity: string;
@@ -251,6 +252,8 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       };
       const findings = Array.isArray(parsed?.findings) ? parsed.findings : [];
       useFeedbackStore.getState().setFindings(findings);
+      if (parsed?.coverage)
+        useFeedbackStore.getState().setCoverage(parsed.coverage);
 
       // Also refresh the change summary shown in the panel.
       try {

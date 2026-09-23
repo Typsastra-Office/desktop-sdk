@@ -1,0 +1,12 @@
+{
+  "name": "table width overflow",
+  "model": {
+    "stylesDefined": [],
+    "stylesUsed": [],
+    "page": { "width": 210, "height": 297, "marginLeft": 25.4, "marginRight": 25.4, "marginTop": 25.4, "marginBottom": 25.4, "contentWidth": 159.2, "contentHeight": 246.2 },
+    "elements": [
+      { "kind": "table", "index": 0, "id": "table:1_1", "rows": 2, "cols": 2, "headerShaded": true, "caption": "Table 1. x", "geometry": { "right": 200 } }
+    ]
+  },
+  "expect": ["TABLE_WIDTH_OVERFLOW"]
+}
