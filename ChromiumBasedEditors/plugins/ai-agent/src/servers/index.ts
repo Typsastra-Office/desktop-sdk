@@ -1,12 +1,14 @@
 import type { TMCPItem } from "@/lib/types";
 import { CustomServers } from "./CustomServers";
 import { DesktopEditorTool } from "./DesktopEditor";
+import { EditorDocumentTool } from "./EditorDocument";
 import { WebSearch, type WebSearchData } from "./WebSearch";
 
 const ALLOW_ALWAYS_TOOLS = "allowAlwaysTools";
 
 class Servers {
   desktopEditorTool: DesktopEditorTool;
+  editorDocumentTool: EditorDocumentTool;
   customServers: CustomServers;
   webSearch: WebSearch;
 
@@ -14,6 +16,7 @@ class Servers {
 
   constructor() {
     this.desktopEditorTool = new DesktopEditorTool();
+    this.editorDocumentTool = new EditorDocumentTool();
     this.customServers = new CustomServers();
     this.webSearch = new WebSearch();
 
@@ -50,18 +53,27 @@ class Servers {
   };
 
   getTools = async () => {
-    const [desktopEditorTools, webSearchTools, customServersTools] =
-      await Promise.all([
-        this.desktopEditorTool.getTools(),
-        this.webSearch.getTools(),
-        this.customServers.getTools(),
-      ]);
+    const [
+      desktopEditorTools,
+      editorDocumentTools,
+      webSearchTools,
+      customServersTools,
+    ] = await Promise.all([
+      this.desktopEditorTool.getTools(),
+      this.editorDocumentTool.getTools(),
+      this.webSearch.getTools(),
+      this.customServers.getTools(),
+    ]);
 
     const items: Record<string, TMCPItem[]> = {
       "desktop-editor": desktopEditorTools,
       "web-search": webSearchTools,
       ...customServersTools,
     };
+
+    if (editorDocumentTools.length) {
+      items.editor = editorDocumentTools;
+    }
 
     return items;
   };
@@ -73,6 +85,10 @@ class Servers {
   ) => {
     if (type === "desktop-editor") {
       return this.desktopEditorTool.callTools(name, args);
+    }
+
+    if (type === "editor") {
+      return this.editorDocumentTool.callTools(name, args);
     }
 
     if (type === "web-search") {
@@ -90,6 +106,10 @@ class Servers {
 
     if (name.includes("web-search_")) {
       return "web-search";
+    }
+
+    if (name.includes("editor_")) {
+      return "editor";
     }
     return this.customServers.getServerType(name);
   };

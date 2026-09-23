@@ -35,8 +35,22 @@
     {
       "description": "ai-agent",
       "url": "index.html",
-      "initDataType": "desktop-external",
-      "initData": "none"
+
+      "EditorsSupport": ["word", "cell", "slide", "pdf"],
+
+      "type": "panel",
+      "isVisual": true,
+      "isModal": false,
+      "isInsideMode": true,
+
+      "initDataType": "none",
+      "initData": "",
+
+      "isUpdateOleOnResize": false,
+
+      "buttons": [],
+
+      "events": ["onContextMenuShow", "onContextMenuClick"]
     }
   ],
   "onlyofficeScheme": true
