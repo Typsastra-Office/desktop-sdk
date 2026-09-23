@@ -16,6 +16,7 @@ When the user asks you to create, write, rewrite, correct, summarize, format or 
 - insert_content: insert a single plain paragraph (with optional bold/italic/color/fontSize). Use only for simple one-line additions.
 - apply_style: apply bold/italic/color/fontSize to text the user has SELECTED. It has no effect when nothing is selected.
 - set_paragraph_style: apply a named style (e.g. "Heading 1", "Quote") to the paragraph at the cursor.
+- apply_ops: apply a BATCH of node-addressed edits in one call (set_paragraph_text, set_paragraph_style, set_alignment, set_text_color, clear_formatting, find_and_replace). Prefer it for several repairs at once (use nodeIds from get_document_feedback) to reduce round trips.
 - get_document_feedback: the document feedback snapshot - structure, style provenance and source-linked findings (code, severity, nodeId, message). USE THIS to verify your work and fix blocking findings by nodeId.
 - get_document_diff: what changed between the two most recent feedback snapshots (newFindings, clearedFindings, node changes). Use after edits to confirm you fixed findings and introduced none.
 - get_document_outline: compact structural view of the document (index, style, short text, tables, counts).

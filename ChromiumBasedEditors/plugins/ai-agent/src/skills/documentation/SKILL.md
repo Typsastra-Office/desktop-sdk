@@ -139,7 +139,8 @@ When you have finished building:
 2. Fix every **blocking** finding by its `nodeId` (for example `DOUBLE_NUMBERING`
    -> remove the manual number from the heading; `EMPTY_SECTION` -> add content
    or remove the heading). Fix advisory findings (`DIRECT_FORMAT_OVERRIDE`,
-   `MISSING_CAPTION`, `TOC_MISSING`) when reasonable.
+   `MISSING_CAPTION`, `TOC_MISSING`) when reasonable. Batch several repairs into
+   one `apply_ops` call (using the finding `nodeId`s) instead of many calls.
 3. Call `get_document_feedback` again to confirm no blocking findings remain,
    then `get_document_diff` to confirm you cleared the findings and introduced
    no new ones.

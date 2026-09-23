@@ -368,6 +368,97 @@ export class EditorDocumentTool {
       return cleared;
     }, { keepEmphasis });
 
+  // Applies a batch of node-addressed operations in ONE editor call (one round
+  // trip). nodeId is a finding nodeId ("paragraph:<paraId>" or "<kind>:<index>").
+  // Supported ops: set_paragraph_text, set_paragraph_style, set_alignment,
+  // set_text_color, clear_formatting, find_and_replace.
+  applyOps = async (ops: Array<Record<string, unknown>>) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+
+      function findElement(nodeId: string) {
+        var parts = String(nodeId || "").split(":");
+        var kind = parts[0];
+        var val = parts[1];
+        var n = doc.GetElementsCount ? doc.GetElementsCount() : 0;
+        if (kind === "paragraph") {
+          var want = Number(val);
+          for (var i = 0; i < n; i++) {
+            var cand = doc.GetElement(i);
+            if (
+              cand &&
+              typeof cand.GetParaId === "function" &&
+              cand.GetParaId() === want
+            )
+              return cand;
+          }
+        }
+        var idx = parseInt(val, 10);
+        return !isNaN(idx) && doc.GetElement ? doc.GetElement(idx) : null;
+      }
+
+      var list = Array.isArray(scope.ops) ? scope.ops : [];
+      var applied = 0;
+      var errors: string[] = [];
+
+      for (var k = 0; k < list.length; k++) {
+        var op = (list[k] || {}) as Record<string, unknown>;
+        try {
+          if (op.op === "set_paragraph_text") {
+            var p = findElement(String(op.nodeId));
+            if (p && typeof p.SetText === "function") {
+              p.SetText(String(op.text ?? ""));
+              applied++;
+            }
+          } else if (op.op === "set_paragraph_style") {
+            var ps = findElement(String(op.nodeId));
+            var st = doc.GetStyle ? doc.GetStyle(String(op.style)) : null;
+            if (ps && st && typeof ps.SetStyle === "function") {
+              ps.SetStyle(st);
+              applied++;
+            }
+          } else if (op.op === "set_alignment") {
+            var pa = findElement(String(op.nodeId));
+            var jc = op.align === "justify" ? "both" : String(op.align ?? "left");
+            if (pa && typeof pa.SetJc === "function") {
+              pa.SetJc(jc);
+              applied++;
+            }
+          } else if (op.op === "set_text_color") {
+            var pc = findElement(String(op.nodeId));
+            if (
+              pc &&
+              typeof pc.SetColor === "function" &&
+              typeof Api.HexColor === "function"
+            ) {
+              pc.SetColor(Api.HexColor(String(op.color)));
+              applied++;
+            }
+          } else if (op.op === "clear_formatting") {
+            var pf = op.nodeId ? findElement(String(op.nodeId)) : null;
+            if (pf && typeof pf.ClearDirectFormatting === "function") {
+              pf.ClearDirectFormatting(op.keepEmphasis !== false);
+              applied++;
+            }
+          } else if (op.op === "find_and_replace") {
+            if (typeof doc.SearchAndReplace === "function") {
+              doc.SearchAndReplace({
+                searchString: String(op.search ?? ""),
+                replaceString: String(op.replace ?? ""),
+                matchCase: true,
+              });
+              applied++;
+            }
+          } else {
+            errors.push("unknown op: " + String(op.op));
+          }
+        } catch (e) {
+          errors.push(String(op.op) + ": " + String(e));
+        }
+      }
+      return JSON.stringify({ applied: applied, errors: errors });
+    }, { ops });
+
   // Find and replace text across the document. Use this to repair merged or
   // duplicated text without rebuilding.
   findAndReplace = async (search: string, replace: string) =>
@@ -2088,6 +2179,16 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "apply_ops",
+        description:
+          "Apply a batch of node-addressed edits in ONE call (fewer round trips). ops is an array; each op has an 'op' name and a nodeId from get_document_feedback. Supported ops: set_paragraph_text {nodeId,text}, set_paragraph_style {nodeId,style}, set_alignment {nodeId,align}, set_text_color {nodeId,color}, clear_formatting {nodeId,keepEmphasis}, find_and_replace {search,replace}.",
+        inputSchema: {
+          type: "object",
+          properties: { ops: { type: "array", items: { type: "object" } } },
+          required: ["ops"],
+        },
+      },
+      {
         name: "set_paragraph_spacing",
         description:
           "Set spacing for the paragraph at the cursor: before/after in points and line spacing multiplier. Use consistent spacing instead of blank paragraphs to control empty space.",
@@ -2372,6 +2473,13 @@ export class EditorDocumentTool {
         break;
       case "clear_formatting":
         result = await this.clearDirectFormatting(args.keepEmphasis !== false);
+        break;
+      case "apply_ops":
+        result = await this.applyOps(
+          Array.isArray(args.ops)
+            ? (args.ops as Array<Record<string, unknown>>)
+            : []
+        );
         break;
       case "set_paragraph_spacing":
         result = await this.setParagraphSpacing(
