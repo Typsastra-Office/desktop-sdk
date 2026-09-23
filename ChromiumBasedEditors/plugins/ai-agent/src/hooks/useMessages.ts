@@ -19,6 +19,14 @@ import useServersStore from "@/store/useServersStore";
 import useSkillsStore from "@/store/useSkillsStore";
 import useThreadsStore from "@/store/useThreadsStore";
 
+// Maximum number of self-review passes before the agent is allowed to finish.
+const MAX_REVIEWS = 2;
+
+// Injected into the system prompt for a review pass. The agent must look at
+// what it produced and fix problems before the conversation can end.
+const REVIEW_INSTRUCTION =
+  "\n\n# Review before finishing\nBefore you finish, review the document you just produced: call get_document_html and check that every section has content, that headings use real heading styles (not bold text), that every table has a header row, fits the page and has a caption, that the table of contents is present, and that there are no large empty gaps. Fix anything that is wrong using the editing tools. When the document is complete, reply with a short summary and stop using tools.";
+
 type UseMessagesProps = {
   isReady: boolean;
 };
@@ -54,6 +62,10 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
   const { getActiveInstructions } = useSkillsStore();
 
   const threadIdRef = useRef(threadId);
+
+  // Review-loop state: whether the agent made edits and how many reviews it did.
+  const editsMadeRef = useRef(false);
+  const reviewCountRef = useRef(0);
 
   useEffect(() => {
     if (!isReady) return;
@@ -117,6 +129,11 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       const toolName = (part.toolName as string) ?? "";
       const type = server.getServerType(toolName);
       const name = toolName.replace(`${type}_`, "");
+
+      // Track whether the agent modified the document (drives the review loop).
+      if (!name.startsWith("get_") && name !== "snapshot_page") {
+        editsMadeRef.current = true;
+      }
 
       if (!checkAllowAlways(type, name)) {
         updateLastMessage(updated);
@@ -234,6 +251,35 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
               }
             }
 
+            // Agentic review loop: after the agent has edited the document and
+            // there is nothing left to run, make it review its own work (read
+            // it back and fix problems) before the conversation can end.
+            if (editsMadeRef.current && reviewCountRef.current < MAX_REVIEWS) {
+              reviewCountRef.current += 1;
+              editsMadeRef.current = false;
+
+              if (provider) {
+                provider.setCurrentProviderPrevMessages(
+                  useMessageStore.getState().messages
+                );
+                provider.setCurrentProviderInstructions(
+                  `${getActiveInstructions()}\n${REVIEW_INSTRUCTION}`
+                );
+
+                const reviewStream = provider.sendMessage(
+                  [],
+                  false,
+                  undefined,
+                  extendedThinking
+                );
+
+                if (reviewStream) {
+                  handleStream(reviewStream, true, messageUID);
+                  return;
+                }
+              }
+            }
+
             setIsStreamRunning(false);
             setIsRequestRunning(false);
 
@@ -267,6 +313,9 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     if (!provider) return;
     if (!currentProvider || !currentModel) return;
     if (message.content[0].type !== "text") return;
+
+    editsMadeRef.current = false;
+    reviewCountRef.current = 0;
 
     let fileContent: FileMessagePart[] = [];
 

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { SKILL_FILES } from "@/skills";
 
 const GLOBAL_KEY = "ai-agent-skills-global";
 
@@ -6,6 +7,7 @@ export type Skill = {
   id: string;
   name: string;
   description: string;
+  /** The markdown body of the SKILL.md file - this is sent to the provider. */
   instruction: string;
   enabled: boolean;
 };
@@ -17,58 +19,16 @@ export type Rule = {
   enabled: boolean;
 };
 
-const DEFAULT_SKILLS: Skill[] = [
-  {
-    id: "docx.report",
-    name: "Report / documentation building",
-    description: "Build complete, designed, professional documents",
-    instruction:
-      "When asked to build a report, template, proposal or any document, follow this workflow. " +
-      "1) Call apply_document_theme FIRST with a professional accent color (#1F3864 unless the user specifies one) so the heading styles are styled. " +
-      "2) Insert a title block: an <h1> title, a one-line subtitle, and an author/date/organisation line. " +
-      "3) Build the body with real headings using insert_html: <h2> for sections and <h3> for subsections only. Never fake a heading with bold text - the heading styles drive the outline and the table of contents. " +
-      "4) Write 2-3 sentences or more of realistic sample content under every section; never leave a section empty. " +
-      "5) After the title block and before the first section, call insert_table_of_contents to add a DYNAMIC table of contents (generated from the headings) - do not hand-write a list of section names. Put a page break before the first section so the TOC is on the title page. " +
-      "6) Tables: give every data table a <thead> header row. Call fit_table mode 'page' to stretch wide tables (many columns) to the page width, or mode 'contents' with center=true for small tables. Add a caption under each table via add_caption with label 'Table'. " +
-      "7) Images: insert relevant figures with insert_image (about 400-500 pt wide, centered) near the text that references them, and add a caption via add_caption with label 'Figure'. " +
-      "8) Control whitespace: call keep_with_next(true) on every heading and caption so they are not orphaned at the bottom of a page; use set_paragraph_spacing for consistent heading spacing (e.g. before 12, after 6) instead of inserting blank paragraphs; never use more than one empty paragraph in a row; use insert_page_break only between major sections, not mid-section. " +
-      "9) Keep a consistent look: the same heading levels, table styling and spacing throughout, with page margins around 56 pt (set_page_margins) unless the user asks otherwise. " +
-      "10) When finished, call get_document_html and review: every section has content, headings are hierarchical, tables fit and are captioned, the TOC is present and there are no large empty gaps. Fix anything wrong before you answer.",
-    enabled: true,
-  },
-  {
-    id: "docx.design",
-    name: "Visual design",
-    description: "Consistent accent color, headings and typography",
-    instruction:
-      "Give documents a consistent visual design: apply a single accent color via apply_document_theme, keep a clear heading hierarchy, and use tables and lists for structure instead of long plain paragraphs.",
-    enabled: true,
-  },
-  {
-    id: "docx.rewrite",
-    name: "Rewrite and proofread",
-    description: "Rewrite or correct selected text in place",
-    instruction:
-      "When asked to rewrite, correct or proofread text, edit it in place in the document and preserve the surrounding formatting.",
-    enabled: true,
-  },
-  {
-    id: "docx.style",
-    name: "Style matching",
-    description: "Match the document's existing style",
-    instruction:
-      "Match the existing styles and formatting of the document when adding new content.",
-    enabled: true,
-  },
-  {
-    id: "docx.i18n",
-    name: "Multilingual fonts",
-    description: "Use the correct font for non-Latin scripts",
-    instruction:
-      "Use the correct font for non-Latin scripts (for example Khmer OS Siemreap for Khmer text).",
-    enabled: false,
-  },
-];
+// Skills are authored as markdown files (src/skills/<id>/SKILL.md). The body of
+// each file is what is sent to the provider, so a skill can be written and
+// reviewed like documentation instead of being hardcoded here.
+const DEFAULT_SKILLS: Skill[] = SKILL_FILES.map((file) => ({
+  id: file.id,
+  name: file.name,
+  description: file.description,
+  instruction: file.body,
+  enabled: file.defaultEnabled,
+}));
 
 type UseSkillsStoreProps = {
   skills: Skill[];
@@ -106,7 +66,7 @@ const persistGlobal = (skills: Skill[], rules: Rule[]) => {
 
 const loaded = loadGlobal();
 
-// Keep the latest default instruction text (so improvements apply) while
+// Keep the latest markdown from the SKILL.md files (so edits apply) while
 // preserving the user's enabled/disabled choices.
 const mergeSkills = (stored?: Skill[]): Skill[] =>
   DEFAULT_SKILLS.map((def) => {
@@ -159,7 +119,7 @@ const useSkillsStore = create<UseSkillsStoreProps>((set, get) => ({
     }),
   getActiveInstructions: () => {
     const state = get();
-    const instructions = state.skills
+    const skillBodies = state.skills
       .filter((skill) => skill.enabled)
       .map((skill) => skill.instruction);
     const rules = [...state.globalRules, ...state.documentRules]
@@ -167,12 +127,19 @@ const useSkillsStore = create<UseSkillsStoreProps>((set, get) => ({
       .map((rule) => rule.text);
 
     const parts: string[] = [];
-    if (instructions.length)
-      parts.push(`Skills:\n${instructions.map((i) => `- ${i}`).join("\n")}`);
-    if (rules.length)
+
+    if (skillBodies.length) {
+      parts.push(skillBodies.join("\n\n---\n\n"));
+    }
+
+    if (rules.length) {
       parts.push(
-        `Rules (you must always follow these):\n${rules.map((r) => `- ${r}`).join("\n")}`
+        `# Rules (you must always follow these)\n${rules
+          .map((rule) => `- ${rule}`)
+          .join("\n")}`
       );
+    }
+
     return parts.join("\n\n");
   },
 }));
