@@ -123,18 +123,22 @@ const processAssistantParts = (
     // Skip non-tool-call parts
     if (part.type !== "tool-call") continue;
 
+    // A tool call and its result must share the same id. Generate the fallback
+    // once per part so they cannot diverge (a mismatch is rejected with 400).
+    const toolCallId = part.toolCallId || generateFallbackToolCallId();
+
     // Collect tool result if present
     if (part.result) {
       toolResults.push({
         role: "tool",
         content: part.result,
-        tool_call_id: part.toolCallId ?? generateFallbackToolCallId(),
+        tool_call_id: toolCallId,
       });
     }
 
     // Collect tool call
     toolCalls.push({
-      id: part.toolCallId ?? generateFallbackToolCallId(),
+      id: toolCallId,
       type: "function",
       function: {
         arguments: part.argsText ?? "",
@@ -181,7 +185,10 @@ export const convertMessagesToModelFormat = (
 
     const assistantMessage: AssistantMessageWithReasoning = {
       role: "assistant",
-      content,
+      // An assistant turn with tool calls but no text must send content: null
+      // (an empty array is rejected by some gateways).
+      content:
+        Array.isArray(content) && content.length === 0 ? null : content,
     };
 
     // Add reasoning_content for DeepSeek thinking mode
