@@ -5,6 +5,7 @@ import useAttachmentsStore from "@/store/useAttachmentsStore";
 import useModelsStore from "@/store/useModelsStore";
 import useProviders from "@/store/useProviders";
 import { ComposerAction } from "./ComposerAction";
+import { ComposerContextChips } from "./ComposerContextChips";
 
 const Composer = () => {
   const { attachmentFiles, attachmentImages } = useAttachmentsStore();
@@ -25,6 +26,8 @@ const Composer = () => {
             ))}
           </div>
         ) : null}
+
+        <ComposerContextChips />
 
         <ComposerPrimitive.Input
           placeholder={t("AskAI")}

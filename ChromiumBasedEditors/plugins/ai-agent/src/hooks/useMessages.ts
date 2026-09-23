@@ -11,6 +11,7 @@ import { provider, type SendMessageReturnType } from "@/providers";
 import { createErrorResponse } from "@/providers/openai/constants";
 import server from "@/servers";
 import useAttachmentsStore from "@/store/useAttachmentsStore";
+import useContextStore from "@/store/useContextStore";
 import useMessageStore from "@/store/useMessageStore";
 import useModelsStore from "@/store/useModelsStore";
 import useProviders from "@/store/useProviders";
@@ -46,6 +47,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     attachmentImages,
     clearAttachmentImages,
   } = useAttachmentsStore();
+  const { items: contextItems, clearContext } = useContextStore();
   const { currentProvider } = useProviders();
   const { currentModel, extendedThinking } = useModelsStore();
 
@@ -287,11 +289,21 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       clearAttachmentImages();
     }
 
+    const contextText = contextItems
+      .map((item) => `@${item.label}:\n${item.text}`)
+      .join("\n\n");
+
+    const userText = contextText
+      ? `${contextText}\n\n${message.content[0].text}`
+      : message.content[0].text;
+
     const content: ThreadMessageLike["content"] = [
       ...fileContent,
       ...imageContent,
-      { type: "text", text: message.content[0].text },
+      { type: "text", text: userText },
     ];
+
+    clearContext();
 
     const userMessage: ThreadMessageLike = {
       role: "user",

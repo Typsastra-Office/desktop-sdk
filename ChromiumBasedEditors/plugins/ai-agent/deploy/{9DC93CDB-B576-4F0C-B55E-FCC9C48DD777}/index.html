@@ -13,6 +13,39 @@
       window.Asc.plugin = window.Asc.plugin || {};
       window.Asc.plugin.init = window.Asc.plugin.init || function () {};
       window.Asc.plugin.button = window.Asc.plugin.button || function () {};
+
+      // Right-click "Add to AI chat": contributes a context-menu item and
+      // forwards the selection to the React app.
+      window.Asc.plugin.event_onContextMenuShow = function () {
+        try {
+          window.Asc.plugin.executeMethod("AddContextMenuItem", [
+            {
+              guid: window.Asc.plugin.guid,
+              items: [{ id: "ai_agent_add", text: "Add to AI chat" }],
+            },
+          ]);
+        } catch (e) {
+          // ignore
+        }
+      };
+      window.Asc.plugin.event_onContextMenuClick = function (id) {
+        if (id !== "ai_agent_add") return;
+        try {
+          window.Asc.plugin.executeMethod(
+            "GetSelectedText",
+            [{ Numbering: false }],
+            function (text) {
+              window.dispatchEvent(
+                new CustomEvent("ai-agent-add-context", {
+                  detail: { text: text || "" },
+                })
+              );
+            }
+          );
+        } catch (e) {
+          // ignore
+        }
+      };
     </script>
     <script type="module" crossorigin src="index.js"></script>
     <link rel="stylesheet" crossorigin href="index.css">
