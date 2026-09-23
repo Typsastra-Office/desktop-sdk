@@ -24,7 +24,9 @@ export type ProviderType =
   | "deepseek"
   | "xai"
   | "lm-studio"
-  | "mistral";
+  | "mistral"
+  | "opencode"
+  | "opencode-go";
 
 export type Model = {
   id: string;

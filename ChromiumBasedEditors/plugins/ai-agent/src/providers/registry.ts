@@ -6,6 +6,8 @@ import { type LMStudioProvider, lmStudioProvider } from "./lm-studio";
 import { type MistralProvider, mistralProvider } from "./mistral";
 import { type OllamaProvider, ollamaProvider } from "./ollama";
 import { type OpenAIProvider, openaiProvider } from "./openai";
+import { type OpenCodeProvider, opencodeProvider } from "./opencode";
+import { type OpenCodeGoProvider, opencodeGoProvider } from "./opencode-go";
 import {
   type OpenAICompatibleProvider,
   openaicompatibleProvider,
@@ -25,7 +27,9 @@ export type BaseProvider =
   | DeepSeekProvider
   | XAIProvider
   | LMStudioProvider
-  | MistralProvider;
+  | MistralProvider
+  | OpenCodeProvider
+  | OpenCodeGoProvider;
 
 /**
  * Registry mapping provider types to their singleton instances.
@@ -43,6 +47,8 @@ export const providerRegistry: Record<ProviderType, BaseProvider> = {
   xai: xaiProvider,
   "lm-studio": lmStudioProvider,
   mistral: mistralProvider,
+  opencode: opencodeProvider,
+  "opencode-go": opencodeGoProvider,
 };
 
 /**
