@@ -173,8 +173,9 @@ export class EditorDocumentTool {
     const normalized = String(html).replace(/<br\s*\/?>/gi, "</p><p>");
     const result = await this.callMethod("PasteHtml", [normalized]);
 
-    // Make the named styles authoritative over the paste's direct formatting.
-    await this.conformToStyles();
+    // Merge pasted formatting into the named styles (drop direct font/size/
+    // colour) so the styles are authoritative.
+    await this.clearDirectFormatting(true);
 
     return result;
   };
@@ -346,83 +347,26 @@ export class EditorDocumentTool {
       return changed;
     }, { accent });
 
-  // Copies each paragraph style's font, size and colour onto its runs. The
-  // editor attaches direct formatting on paste (which overrides the named
-  // styles), so this makes the styles authoritative without styling each piece
-  // of content in the HTML.
-  conformToStyles = async () =>
+  // Clears direct character formatting on top-level paragraphs so the named
+  // styles apply (bold/italic/underline preserved). This is the merge-paste
+  // step: pasted formatting is dropped instead of overriding the styles. Table
+  // cell runs are left untouched so table styling is preserved.
+  clearDirectFormatting = async (keepEmphasis = true) =>
     this.callEditorCommand(function () {
       var doc = Api.GetDocument();
-      if (typeof doc.GetStyle !== "function") return 0;
-      var cache: Record<string, unknown> = {};
-      function textPrFor(name: string) {
-        if (cache[name] !== undefined) return cache[name];
-        var s = doc.GetStyle(name);
-        cache[name] = s && typeof s.GetTextPr === "function" ? s.GetTextPr() : null;
-        return cache[name];
-      }
-      function hexOf(tp: any) {
-        if (!tp || typeof tp.GetColor !== "function") return null;
-        var c = tp.GetColor();
-        if (!c) return null;
-        var r: number | undefined;
-        var g: number | undefined;
-        var b: number | undefined;
-        if (typeof c.GetRGB === "function") {
-          var o = c.GetRGB();
-          if (o) {
-            r = o.r;
-            g = o.g;
-            b = o.b;
-          }
-        } else if (typeof c.value === "number") {
-          var v = c.value;
-          r = (v >> 16) & 255;
-          g = (v >> 8) & 255;
-          b = v & 255;
-        }
-        if (r === undefined || g === undefined || b === undefined) return null;
-        var h2 = function (x: number) {
-          var s = x.toString(16);
-          return s.length < 2 ? "0" + s : s;
-        };
-        return "#" + h2(r) + h2(g) + h2(b);
-      }
-
       var n = doc.GetElementsCount ? doc.GetElementsCount() : 0;
-      var changed = 0;
+      var cleared = 0;
       for (var i = 0; i < n; i++) {
-        var p = doc.GetElement(i);
-        var st = p && typeof p.GetStyle === "function" ? p.GetStyle() : null;
-        var name = st && typeof st.GetName === "function" ? st.GetName() : "";
-        if (!name) name = "Normal";
-        var tp: any = textPrFor(name);
-        if (!tp) continue;
-        var hexColor = hexOf(tp);
-        var fam =
-          typeof tp.GetFontFamily === "function"
-            ? tp.GetFontFamily("ascii")
-            : null;
-        var size =
-          typeof tp.GetFontSize === "function" ? Number(tp.GetFontSize()) : 0;
-
-        var runs = p.GetElementsCount ? p.GetElementsCount() : 0;
-        for (var r = 0; r < runs; r++) {
-          var run: any = p.GetElement(r);
-          if (!run) continue;
-          if (run.GetClassType && run.GetClassType() !== "run") continue;
-          if (hexColor && typeof run.SetColor === "function") {
-            run.SetColor(Api.HexColor(hexColor));
-            changed++;
-          }
-          if (fam && typeof run.SetFontFamily === "function")
-            run.SetFontFamily(fam);
-          if (size && typeof run.SetFontSize === "function")
-            run.SetFontSize(size);
+        var el = doc.GetElement(i);
+        if (!el || (el.GetClassType && el.GetClassType() !== "paragraph"))
+          continue;
+        if (typeof el.ClearDirectFormatting === "function") {
+          el.ClearDirectFormatting(scope.keepEmphasis !== false);
+          cleared++;
         }
       }
-      return changed;
-    });
+      return cleared;
+    }, { keepEmphasis });
 
   // Find and replace text across the document. Use this to repair merged or
   // duplicated text without rebuilding.
@@ -2135,6 +2079,15 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "clear_formatting",
+        description:
+          "Clear direct character formatting on the document's paragraphs so the named styles apply (bold/italic/underline are kept). Use it to fix content that ignores the document styles.",
+        inputSchema: {
+          type: "object",
+          properties: { keepEmphasis: { type: "boolean" } },
+        },
+      },
+      {
         name: "set_paragraph_spacing",
         description:
           "Set spacing for the paragraph at the cursor: before/after in points and line spacing multiplier. Use consistent spacing instead of blank paragraphs to control empty space.",
@@ -2416,6 +2369,9 @@ export class EditorDocumentTool {
               : undefined,
           totalFill: args.totalFill ? String(args.totalFill) : undefined,
         });
+        break;
+      case "clear_formatting":
+        result = await this.clearDirectFormatting(args.keepEmphasis !== false);
         break;
       case "set_paragraph_spacing":
         result = await this.setParagraphSpacing(
