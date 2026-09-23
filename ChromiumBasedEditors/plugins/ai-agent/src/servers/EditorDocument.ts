@@ -314,6 +314,57 @@ export class EditorDocumentTool {
       return changed;
     }, { accent });
 
+  // Find and replace text across the document. Use this to repair merged or
+  // duplicated text without rebuilding.
+  findAndReplace = async (search: string, replace: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof doc.SearchAndReplace !== "function") return false;
+      return (
+        doc.SearchAndReplace({
+          searchString: scope.search,
+          replaceString: scope.replace,
+          matchCase: true,
+        }) !== false
+      );
+    }, { search, replace });
+
+  // Replace the whole text of the paragraph at the given 0-based index. Use
+  // get_document_html to find the index of a problematic paragraph.
+  setParagraphText = async (index: number, text: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof doc.GetElement !== "function") return false;
+      var p = doc.GetElement(scope.index);
+      if (!p || typeof p.SetText !== "function") return false;
+      p.SetText(scope.text);
+      return true;
+    }, { index, text });
+
+  // Insert a new paragraph after the paragraph at the given index, optionally
+  // with a named style. Use this to split merged paragraphs (e.g. a heading
+  // stuck to the previous paragraph).
+  insertParagraphAfter = async (
+    index: number,
+    text: string,
+    styleName?: string
+  ) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof doc.GetElement !== "function") return false;
+      var p = doc.GetElement(scope.index);
+      if (!p || typeof p.InsertParagraph !== "function") return false;
+
+      var np = Api.CreateParagraph();
+      if (scope.style && typeof doc.GetStyle === "function") {
+        var st = doc.GetStyle(scope.style);
+        if (st && typeof np.SetStyle === "function") np.SetStyle(st);
+      }
+      np.AddText(scope.text);
+      p.InsertParagraph(np, "after", true);
+      return true;
+    }, { index, text, style: styleName });
+
   // Deterministic rule enforcement: set the font used for a script across the
   // whole document so font rules are guaranteed, not just suggested.
   enforceFont = async (script: string, font: string) =>
@@ -789,6 +840,46 @@ export class EditorDocumentTool {
           properties: { page: { type: "number" } },
         },
       },
+      {
+        name: "find_and_replace",
+        description:
+          "Find and replace text in the document. Use it to repair merged or duplicated text without rebuilding.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            search: { type: "string" },
+            replace: { type: "string" },
+          },
+          required: ["search", "replace"],
+        },
+      },
+      {
+        name: "set_paragraph_text",
+        description:
+          "Replace the entire text of the paragraph at a 0-based index (order matches get_document_html / get_document_text).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            index: { type: "number" },
+            text: { type: "string" },
+          },
+          required: ["index", "text"],
+        },
+      },
+      {
+        name: "insert_paragraph_after",
+        description:
+          'Insert a new paragraph after the paragraph at a 0-based index, optionally with a named style (e.g. "Heading 2"). Use to split merged paragraphs and restore headings.',
+        inputSchema: {
+          type: "object",
+          properties: {
+            index: { type: "number" },
+            text: { type: "string" },
+            style: { type: "string" },
+          },
+          required: ["index", "text"],
+        },
+      },
     ];
   };
 
@@ -886,6 +977,25 @@ export class EditorDocumentTool {
           Number(args.top ?? 56),
           Number(args.right ?? 56),
           Number(args.bottom ?? 56)
+        );
+        break;
+      case "find_and_replace":
+        result = await this.findAndReplace(
+          String(args.search ?? ""),
+          String(args.replace ?? "")
+        );
+        break;
+      case "set_paragraph_text":
+        result = await this.setParagraphText(
+          Number(args.index ?? 0),
+          String(args.text ?? "")
+        );
+        break;
+      case "insert_paragraph_after":
+        result = await this.insertParagraphAfter(
+          Number(args.index ?? 0),
+          String(args.text ?? ""),
+          args.style ? String(args.style) : undefined
         );
         break;
       case "get_document_text":

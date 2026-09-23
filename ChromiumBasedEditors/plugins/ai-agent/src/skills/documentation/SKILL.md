@@ -124,5 +124,13 @@ When you have finished building:
   `insert_table_of_contents` once, after the sections are in place.
 - Re-running `insert_table_of_contents` refreshes it in place; it does not
   create duplicates.
+- If two blocks get merged (for example a heading stuck to the end of the
+  previous paragraph), repair it IN PLACE instead of giving up:
+  1. `get_document_html` to find the paragraph index;
+  2. `set_paragraph_text` to trim the merged paragraph;
+  3. `insert_paragraph_after` to re-add the heading with its style, or
+     `find_and_replace` for a simpler swap.
+  Never tell the user a paragraph "cannot be addressed" - every paragraph has a
+  stable index you can edit.
 - Never leave the task half-done: if a tool fails, adapt and continue instead of
   restarting.
