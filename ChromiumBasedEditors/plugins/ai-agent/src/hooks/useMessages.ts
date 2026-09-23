@@ -20,11 +20,11 @@ import useSkillsStore from "@/store/useSkillsStore";
 import useThreadsStore from "@/store/useThreadsStore";
 
 // Maximum number of self-review passes before the agent is allowed to finish.
-const MAX_REVIEWS = 1;
+const MAX_REVIEWS = 2;
 
 // Hard cap on tool-call rounds per user message, so a model that keeps calling
 // tools cannot loop forever and freeze the conversation.
-const MAX_TOOL_ROUNDS = 15;
+const MAX_TOOL_ROUNDS = 40;
 
 // Injected into the system prompt for a review pass. The agent must look at
 // what it produced and fix problems before the conversation can end.

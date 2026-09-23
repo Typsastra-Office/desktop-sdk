@@ -71,14 +71,15 @@ class Servers {
       this.customServers.getTools(),
     ]);
 
-    // The agent must never create or open documents - it only edits the
-    // document that is currently active in the editor.
+    // The agent must never create or open documents, and must not wipe the
+    // document and rebuild it - it edits what is already there.
     const hiddenTools = [
       "generate_docx",
       "generate_form",
       "generate_pptx",
       "file_opener",
       "form_field_filler",
+      "clear_document",
     ];
 
     const items: Record<string, TMCPItem[]> = {

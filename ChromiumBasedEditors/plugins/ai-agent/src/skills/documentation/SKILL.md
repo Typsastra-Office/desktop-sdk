@@ -113,11 +113,15 @@ When you have finished building:
 
 ## Editing rules (important)
 
-- Work on what is already in the document. Do NOT delete and rebuild the whole
-  document to reorder or fix it. `clear_document` is only allowed when the
-  document is empty or the user explicitly asks to start over.
+- Work on what is already in the document. NEVER delete all content or rebuild
+  the whole document to reorder or fix it. You do not have a "clear document"
+  tool.
 - Prefer small, targeted edits (`replace_selection`, `insert_html` at the
   cursor) over regenerating everything.
+- Batch your work to avoid many round-trips: put a whole section (its heading
+  and all its paragraphs, lists and table) into a single `insert_html` call; do
+  NOT call `get_document_text` between insertions; call
+  `insert_table_of_contents` once, after the sections are in place.
 - Re-running `insert_table_of_contents` refreshes it in place; it does not
   create duplicates.
 - Never leave the task half-done: if a tool fails, adapt and continue instead of
