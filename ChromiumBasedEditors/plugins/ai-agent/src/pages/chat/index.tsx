@@ -5,6 +5,7 @@ import { Loader } from "@/components/loader";
 import useMessageStore from "@/store/useMessageStore";
 import { AssistantMessage } from "./sub-components/AssistantMessage";
 import { Composer } from "./sub-components/Composer";
+import { DocumentHealth } from "./sub-components/DocumentHealth";
 import { UserMessage } from "./sub-components/UserMessage";
 import { ThreadWelcome } from "./sub-components/Welcome";
 
@@ -53,6 +54,7 @@ const Thread = () => {
           <motion.div className="min-h-6 min-w-6 shrink-0" />
         </ThreadPrimitive.Viewport>
 
+        <DocumentHealth />
         <Composer />
       </ThreadPrimitive.If>
     </ThreadPrimitive.Root>

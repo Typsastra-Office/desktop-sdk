@@ -7,11 +7,13 @@ import type {
 import { useEffect, useRef } from "react";
 import { createMessage, updateMessage } from "@/database/messages";
 import { getThread } from "@/database/metadata";
+import type { Finding } from "@/lib/agentFindings";
 import { provider, type SendMessageReturnType } from "@/providers";
 import { createErrorResponse } from "@/providers/openai/constants";
 import server from "@/servers";
 import useAttachmentsStore from "@/store/useAttachmentsStore";
 import useContextStore from "@/store/useContextStore";
+import useFeedbackStore from "@/store/useFeedbackStore";
 import useMessageStore from "@/store/useMessageStore";
 import useModelsStore from "@/store/useModelsStore";
 import useProviders from "@/store/useProviders";
@@ -164,6 +166,20 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
         (part.args as Record<string, unknown>) ?? {}
       );
 
+      // Keep the "Document health" panel in sync when the agent reads feedback.
+      if (name === "get_document_feedback" && typeof rawResult === "string") {
+        try {
+          const parsed = JSON.parse(rawResult) as { findings?: unknown };
+          if (Array.isArray(parsed?.findings)) {
+            useFeedbackStore
+              .getState()
+              .setFindings(parsed.findings as Finding[]);
+          }
+        } catch {
+          // ignore malformed feedback
+        }
+      }
+
       const result =
         typeof rawResult === "string" && rawResult.length > MAX_TOOL_RESULT
           ? `${rawResult.slice(0, MAX_TOOL_RESULT)}…[truncated]`
@@ -231,7 +247,9 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
           message: string;
         }>;
       };
-      return Array.isArray(parsed?.findings) ? parsed.findings : [];
+      const findings = Array.isArray(parsed?.findings) ? parsed.findings : [];
+      useFeedbackStore.getState().setFindings(findings);
+      return findings;
     } catch {
       return [];
     }

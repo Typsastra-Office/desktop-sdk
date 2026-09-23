@@ -1579,6 +1579,23 @@ export class EditorDocumentTool {
     });
   };
 
+  // Selects (and scrolls to) the node referenced by a finding's nodeId, e.g.
+  // "paragraph:5" or "table:3".
+  selectNode = async (nodeId: string) =>
+    this.callEditorCommand(function () {
+      var parts = String(scope.nodeId || "").split(":");
+      var index = parseInt(parts[1], 10);
+      if (isNaN(index)) return false;
+      var doc = Api.GetDocument();
+      var el = doc.GetElement ? doc.GetElement(index) : null;
+      if (!el) return false;
+      if (typeof el.Select === "function") {
+        el.Select();
+        return true;
+      }
+      return false;
+    }, { nodeId });
+
   getTools = (): TMCPItem[] => {
     if (!this.isAvailable()) return [];
     return [
@@ -1987,6 +2004,18 @@ export class EditorDocumentTool {
         inputSchema: { type: "object", properties: {} },
       },
       {
+        name: "select_node",
+        description:
+          "Select and scroll to a document node by its finding nodeId (e.g. \"paragraph:5\" or \"table:3\").",
+        inputSchema: {
+          type: "object",
+          properties: {
+            nodeId: { type: "string", description: "e.g. paragraph:5 or table:3" },
+          },
+          required: ["nodeId"],
+        },
+      },
+      {
         name: "get_document_outline",
         description:
           "Return a compact, bounded structural outline of the document (paragraph index, style, short text, table shape, counts). USE THIS for self-review instead of get_document_html: it is smaller, complete, and reliable.",
@@ -2237,6 +2266,9 @@ export class EditorDocumentTool {
         break;
       case "get_document_feedback":
         result = await this.getAgentSnapshot();
+        break;
+      case "select_node":
+        result = await this.selectNode(String(args.nodeId ?? ""));
         break;
       default:
         result = { error: `unknown editor tool: ${name}` };
