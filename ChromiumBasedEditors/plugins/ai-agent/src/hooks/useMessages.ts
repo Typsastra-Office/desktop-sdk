@@ -24,7 +24,11 @@ const MAX_REVIEWS = 2;
 
 // Hard cap on tool-call rounds per user message, so a model that keeps calling
 // tools cannot loop forever and freeze the conversation.
-const MAX_TOOL_ROUNDS = 40;
+const MAX_TOOL_ROUNDS = 20;
+
+// Tool results (e.g. get_document_html) can be very large; truncate them so the
+// conversation context does not balloon and degrade the model.
+const MAX_TOOL_RESULT = 6000;
 
 // Injected into the system prompt for a review pass. The agent must look at
 // what it produced and fix problems before the conversation can end.
@@ -137,7 +141,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     for (let i = 0; i < total; i++) {
       const part = (updated.content as Array<Record<string, unknown>>)[i];
 
-      if (part.type !== "tool-call" || part.result) continue;
+      if (part.type !== "tool-call" || part.result !== undefined) continue;
 
       const toolName = (part.toolName as string) ?? "";
       const type = server.getServerType(toolName);
@@ -155,10 +159,15 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
         return;
       }
 
-      const result = await callTools(
+      const rawResult = await callTools(
         toolName,
         (part.args as Record<string, unknown>) ?? {}
       );
+
+      const result =
+        typeof rawResult === "string" && rawResult.length > MAX_TOOL_RESULT
+          ? `${rawResult.slice(0, MAX_TOOL_RESULT)}…[truncated]`
+          : (rawResult ?? "");
 
       updated = attachToolResult(updated, i, result);
       updateLastMessage(updated);
@@ -254,7 +263,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
               Array.isArray(lastMessage.content)
             ) {
               const toolCallIdx = lastMessage.content.findIndex(
-                (c) => c.type === "tool-call" && !c.result
+                (c) => c.type === "tool-call" && c.result === undefined
               );
 
               if (toolCallIdx !== -1) {

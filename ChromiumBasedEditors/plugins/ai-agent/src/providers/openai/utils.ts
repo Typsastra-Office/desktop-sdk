@@ -127,8 +127,8 @@ const processAssistantParts = (
     // once per part so they cannot diverge (a mismatch is rejected with 400).
     const toolCallId = part.toolCallId || generateFallbackToolCallId();
 
-    // Collect tool result if present
-    if (part.result) {
+    // Collect tool result if present (an empty string is still a result).
+    if (part.result !== undefined) {
       toolResults.push({
         role: "tool",
         content: part.result,
@@ -185,10 +185,7 @@ export const convertMessagesToModelFormat = (
 
     const assistantMessage: AssistantMessageWithReasoning = {
       role: "assistant",
-      // An assistant turn with tool calls but no text must send content: null
-      // (an empty array is rejected by some gateways).
-      content:
-        Array.isArray(content) && content.length === 0 ? null : content,
+      content,
     };
 
     // Add reasoning_content for DeepSeek thinking mode
