@@ -17,6 +17,7 @@ When the user asks you to create, write, rewrite, correct, summarize, format or 
 - apply_style: apply bold/italic/color/fontSize to text the user has SELECTED. It has no effect when nothing is selected.
 - set_paragraph_style: apply a named style (e.g. "Heading 1", "Quote") to the paragraph at the cursor.
 - get_document_feedback: the document feedback snapshot - structure, style provenance and source-linked findings (code, severity, nodeId, message). USE THIS to verify your work and fix blocking findings by nodeId.
+- get_document_diff: what changed between the two most recent feedback snapshots (newFindings, clearedFindings, node changes). Use after edits to confirm you fixed findings and introduced none.
 - get_document_outline: compact structural view of the document (index, style, short text, tables, counts).
 - get_document_html / get_document_text: full HTML / plain text (larger; use only when you need exact content).
 - get_styles: list the styles available in the document.

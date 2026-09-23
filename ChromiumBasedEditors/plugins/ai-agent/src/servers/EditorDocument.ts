@@ -4,6 +4,11 @@ import {
   type DocElement,
   type DocModel,
 } from "@/lib/agentFindings";
+import {
+  diffSnapshots,
+  summarizeDiff,
+  type AgentSnapshot,
+} from "@/lib/agentDiff";
 import type { TMCPItem } from "@/lib/types";
 
 // These identifiers are injected by the editor's plugin host when a
@@ -61,6 +66,11 @@ export class EditorDocumentTool {
   // Accent color of the active theme, remembered so newly inserted headings can
   // be colored (HTML paste forces a black run color that overrides the style).
   private themeAccent?: string;
+
+  // Feedback snapshots for get_document_diff: current is the last snapshot,
+  // previous is the one before it.
+  private previousSnapshot?: AgentSnapshot;
+  private currentSnapshot?: AgentSnapshot;
 
   isAvailable = (): boolean => isPluginPresent();
 
@@ -1563,6 +1573,13 @@ export class EditorDocumentTool {
     }
 
     const findings = computeFindings(model);
+    const nodes = (model.elements ?? []).slice(0, 200) as DocElement[];
+
+    // Rotate snapshots so get_document_diff can report what changed since the
+    // previous feedback call.
+    this.previousSnapshot = this.currentSnapshot;
+    this.currentSnapshot = { schema: "tysastra.agent.doc/1.0", findings, nodes };
+
     return JSON.stringify({
       schema: "tysastra.agent.doc/1.0",
       coverage: {
@@ -1575,7 +1592,28 @@ export class EditorDocumentTool {
       },
       summary: summarizeFindings(findings),
       findings,
-      nodes: (model.elements ?? []).slice(0, 200) as DocElement[],
+      nodes,
+    });
+  };
+
+  // Compares the two most recent feedback snapshots (from get_document_feedback)
+  // so the agent can see what its edits changed and which findings cleared.
+  getDocumentDiff = async () => {
+    if (!this.previousSnapshot || !this.currentSnapshot) {
+      return JSON.stringify({
+        schema: "tysastra.agent.doc/1.0",
+        note: "No previous snapshot. Call get_document_feedback, make changes, then call get_document_diff.",
+      });
+    }
+    const diff = diffSnapshots(this.previousSnapshot, this.currentSnapshot);
+    return JSON.stringify({
+      schema: "tysastra.agent.doc/1.0",
+      summary: summarizeDiff(diff),
+      newFindings: diff.newFindings,
+      clearedFindings: diff.clearedFindings,
+      addedNodes: diff.addedNodes,
+      removedNodes: diff.removedNodes,
+      changedNodes: diff.changedNodes,
     });
   };
 
@@ -2016,6 +2054,12 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "get_document_diff",
+        description:
+          "Compare the two most recent get_document_feedback snapshots and return what changed: newFindings, clearedFindings, and node add/remove/change counts. Use it after edits to confirm your changes fixed findings and did not introduce new ones.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "get_document_outline",
         description:
           "Return a compact, bounded structural outline of the document (paragraph index, style, short text, table shape, counts). USE THIS for self-review instead of get_document_html: it is smaller, complete, and reliable.",
@@ -2266,6 +2310,9 @@ export class EditorDocumentTool {
         break;
       case "get_document_feedback":
         result = await this.getAgentSnapshot();
+        break;
+      case "get_document_diff":
+        result = await this.getDocumentDiff();
         break;
       case "select_node":
         result = await this.selectNode(String(args.nodeId ?? ""));

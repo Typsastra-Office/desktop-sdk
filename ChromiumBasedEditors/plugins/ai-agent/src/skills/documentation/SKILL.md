@@ -140,7 +140,9 @@ When you have finished building:
    -> remove the manual number from the heading; `EMPTY_SECTION` -> add content
    or remove the heading). Fix advisory findings (`DIRECT_FORMAT_OVERRIDE`,
    `MISSING_CAPTION`, `TOC_MISSING`) when reasonable.
-3. Call `get_document_feedback` again to confirm no blocking findings remain.
+3. Call `get_document_feedback` again to confirm no blocking findings remain,
+   then `get_document_diff` to confirm you cleared the findings and introduced
+   no new ones.
 4. Fix anything else that is wrong IN PLACE with the editing tools; never clear
    or rebuild the document.
 5. Only then write your final answer, briefly saying what you built and checked.

@@ -328,11 +328,23 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
                 editsMadeRef.current = false;
 
                 if (provider) {
+                  let diff = "";
+                  try {
+                    const d = await server.callTools(
+                      "editor",
+                      "get_document_diff",
+                      {}
+                    );
+                    diff = typeof d === "string" ? d : JSON.stringify(d ?? "");
+                  } catch {
+                    diff = "";
+                  }
+
                   provider.setCurrentProviderPrevMessages(
                     useMessageStore.getState().messages
                   );
                   provider.setCurrentProviderInstructions(
-                    `${getActiveInstructions()}\n${REVIEW_INSTRUCTION}\n\n# Blocking findings to fix (by nodeId)\n${JSON.stringify(blocking, null, 2)}`
+                    `${getActiveInstructions()}\n${REVIEW_INSTRUCTION}\n\n# Blocking findings to fix (by nodeId)\n${JSON.stringify(blocking, null, 2)}${diff ? `\n\n# Changes since the previous snapshot\n${diff}` : ""}`
                   );
 
                   const reviewStream = provider.sendMessage(
@@ -491,6 +503,13 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     provider.setCurrentProviderInstructions(getActiveInstructions());
 
     addMessage(userMessage);
+
+    // Seed a baseline feedback snapshot so get_document_diff is meaningful.
+    try {
+      await server.callTools("editor", "get_document_feedback", {});
+    } catch {
+      // editor may not be ready yet; ignore
+    }
 
     const stream = provider.sendMessage([userMessage], extendedThinking);
 
