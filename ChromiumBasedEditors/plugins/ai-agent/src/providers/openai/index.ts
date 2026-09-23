@@ -167,7 +167,7 @@ class OpenAIProvider extends AbstractBaseProvider<
       );
 
     const reasoning_effort =
-      withThinking && modelThinking ? "medium" : undefined;
+      withThinking && modelThinking ? this.reasoningEffort : undefined;
 
     const controller = new AbortController();
     this.activeStreamController = controller;

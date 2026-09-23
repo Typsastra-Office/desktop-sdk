@@ -24,6 +24,8 @@ class Provider {
   currentProviderInfo?: TProvider;
   currentProviderType?: ProviderType;
 
+  reasoningEffort: "low" | "medium" | "high" = "medium";
+
   setCurrentProvider = (provider?: TProvider) => {
     if (!provider) {
       this.currentProvider = undefined;
@@ -39,6 +41,7 @@ class Provider {
     if (this.currentProvider) {
       this.currentProvider.setProvider(provider);
       this.currentProvider.setSystemPrompt(SYSTEM_PROMPT);
+      this.currentProvider.setReasoningEffort(this.reasoningEffort);
 
       // Restore model from localStorage to handle initialization race condition
       const savedModel = localStorage.getItem(CURRENT_MODEL_KEY);
@@ -48,6 +51,11 @@ class Provider {
         this.currentProvider.isReasoning = parsed.reasoning ?? false;
       }
     }
+  };
+
+  setCurrentProviderReasoningEffort = (effort: "low" | "medium" | "high") => {
+    this.reasoningEffort = effort;
+    this.currentProvider?.setReasoningEffort(effort);
   };
 
   setCurrentProviderModel = (modelKey: string, isReasoning?: boolean) => {

@@ -1,13 +1,20 @@
 import { create } from "zustand";
-import { CURRENT_MODEL_KEY, DEEP_MODE_KEY } from "@/lib/constants";
+import {
+  CURRENT_MODEL_KEY,
+  DEEP_MODE_KEY,
+  REASONING_EFFORT_KEY,
+} from "@/lib/constants";
 import type { Model } from "@/lib/types";
 import { provider } from "@/providers";
+
+export type ReasoningEffort = "low" | "medium" | "high";
 
 type UseModelsStoreProps = {
   currentModel: Model | null;
   persistedModel: Model | null;
 
   extendedThinking: boolean;
+  reasoningEffort: ReasoningEffort;
 
   selectModel: (model: Model) => void;
   setSessionModel: (model: Model | null) => void;
@@ -15,6 +22,7 @@ type UseModelsStoreProps = {
   deleteSelectedModel: () => void;
 
   toggleExtendedThinking: () => void;
+  setReasoningEffort: (effort: ReasoningEffort) => void;
 };
 
 const useModelsStore = create<UseModelsStoreProps>((set) => ({
@@ -47,6 +55,16 @@ const useModelsStore = create<UseModelsStoreProps>((set) => ({
 
     return JSON.parse(saved);
   })(),
+  reasoningEffort: (() => {
+    const saved = localStorage.getItem(REASONING_EFFORT_KEY);
+
+    const effort: ReasoningEffort =
+      saved === "low" || saved === "high" ? saved : "medium";
+
+    provider.setCurrentProviderReasoningEffort(effort);
+
+    return effort;
+  })(),
 
   selectModel: (model) => {
     set({ currentModel: model, persistedModel: model });
@@ -78,6 +96,12 @@ const useModelsStore = create<UseModelsStoreProps>((set) => ({
 
       return { extendedThinking: currStatus };
     });
+  },
+
+  setReasoningEffort: (effort) => {
+    provider.setCurrentProviderReasoningEffort(effort);
+    localStorage.setItem(REASONING_EFFORT_KEY, effort);
+    set({ reasoningEffort: effort });
   },
 }));
 

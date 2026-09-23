@@ -29,6 +29,7 @@ Object.defineProperty(global, "localStorage", {
 const createMockProvider = () => ({
   setProvider: vi.fn(),
   setSystemPrompt: vi.fn(),
+  setReasoningEffort: vi.fn(),
   setModelKey: vi.fn(),
   setTools: vi.fn(),
   setPrevMessages: vi.fn(),

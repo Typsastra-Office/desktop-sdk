@@ -1,4 +1,5 @@
 import { ComposerActionAttachment } from "./ComposerActionAttachments";
+import { ComposerActionEffort } from "./ComposerActionEffort";
 import { SelectModel } from "./ComposerActionSelectModel";
 import { ComposerActionSend } from "./ComposerActionSend";
 import { ServersSettings } from "./ComposerActionServers";
@@ -13,6 +14,7 @@ const ComposerAction = () => {
         </div>
 
         <div className="flex items-center gap-[12px] flex-row">
+          <ComposerActionEffort />
           <SelectModel />
           <ComposerActionSend />
         </div>

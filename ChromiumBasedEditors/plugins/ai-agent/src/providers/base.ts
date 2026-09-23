@@ -37,6 +37,13 @@ export abstract class AbstractBaseProvider<TOOL, MESSAGE, CLIENT> {
   // Stop flag for interrupting streams
   protected stopFlag = false;
 
+  // Reasoning effort requested by the user, mapped per provider.
+  reasoningEffort: "low" | "medium" | "high" = "medium";
+
+  setReasoningEffort = (effort: "low" | "medium" | "high"): void => {
+    this.reasoningEffort = effort;
+  };
+
   // ============================================
   // Common methods (identical across providers)
   // ============================================

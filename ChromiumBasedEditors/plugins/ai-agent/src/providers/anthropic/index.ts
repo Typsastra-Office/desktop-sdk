@@ -146,7 +146,12 @@ class AnthropicProvider extends AbstractBaseProvider<
         ...(useThinking && {
           thinking: {
             type: "enabled",
-            budget_tokens: 10000,
+            budget_tokens:
+              this.reasoningEffort === "high"
+                ? 32000
+                : this.reasoningEffort === "low"
+                  ? 4000
+                  : 10000,
           },
         }),
       });

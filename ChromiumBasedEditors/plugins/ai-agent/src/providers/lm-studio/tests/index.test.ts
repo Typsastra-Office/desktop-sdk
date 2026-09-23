@@ -401,7 +401,8 @@ describe("LMStudioProvider", () => {
       }
 
       expect(results.length).toBeGreaterThan(0);
-      expect(provider.prevMessages.length).toBeGreaterThan(0);
+      // History is rebuilt from the full message list by the caller.
+      expect(provider.prevMessages).toHaveLength(0);
     });
   });
 
