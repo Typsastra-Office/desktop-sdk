@@ -1,5 +1,7 @@
 import type { Model } from "@/lib/types";
+import OpenAI from "openai";
 import type { TData } from "../base";
+import { createDesktopProxyFetch } from "../desktop-proxy";
 import { OpenAIProvider } from "../openai";
 import { opencodeGoInfo } from "./info";
 
@@ -8,6 +10,17 @@ import { opencodeGoInfo } from "./info";
  * (https://opencode.ai/zen/go/v1) for the low-cost Go subscription.
  */
 class OpenCodeGoProvider extends OpenAIProvider {
+  // opencode.ai does not send CORS headers, so route requests through the
+  // desktop editor's onlyoffice-proxy scheme.
+  protected createClient(apiKey?: string, baseURL?: string): OpenAI {
+    return new OpenAI({
+      apiKey,
+      baseURL,
+      dangerouslyAllowBrowser: true,
+      fetch: createDesktopProxyFetch(),
+    });
+  }
+
   getName = (): string => opencodeGoInfo.name;
 
   getBaseUrl = (): string => opencodeGoInfo.baseUrl;
