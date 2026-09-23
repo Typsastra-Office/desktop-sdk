@@ -193,6 +193,68 @@ describe("computeFindings", () => {
     );
   });
 
+  it("flags TABLE_WIDTH_OVERFLOW when a table exceeds the text column", () => {
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      page: {
+        width: 210,
+        height: 297,
+        marginLeft: 25.4,
+        marginRight: 25.4,
+        marginTop: 25.4,
+        marginBottom: 25.4,
+        contentWidth: 159.2,
+        contentHeight: 246.2,
+      },
+      elements: [
+        {
+          kind: "table",
+          index: 0,
+          rows: 2,
+          cols: 2,
+          headerShaded: true,
+          caption: "Table 1. x",
+          geometry: { right: 200 },
+        },
+      ],
+    };
+    expect(computeFindings(model).map((f) => f.code)).toContain(
+      "TABLE_WIDTH_OVERFLOW"
+    );
+  });
+
+  it("does not flag a table that fits the text column", () => {
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      page: {
+        width: 210,
+        height: 297,
+        marginLeft: 25.4,
+        marginRight: 25.4,
+        marginTop: 25.4,
+        marginBottom: 25.4,
+        contentWidth: 159.2,
+        contentHeight: 246.2,
+      },
+      elements: [
+        {
+          kind: "table",
+          index: 0,
+          rows: 2,
+          cols: 2,
+          headerShaded: true,
+          caption: "Table 1. x",
+          geometry: { right: 180 },
+        },
+      ],
+    };
+    expect(computeFindings(model).map((f) => f.code)).not.toContain(
+      "TABLE_WIDTH_OVERFLOW"
+    );
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],

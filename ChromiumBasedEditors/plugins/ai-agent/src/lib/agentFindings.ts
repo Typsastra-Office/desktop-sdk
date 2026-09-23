@@ -37,6 +37,25 @@ export type ParagraphGeometry = {
   right?: number;
 };
 
+export type TableGeometry = {
+  pagesCount?: number;
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+};
+
+export type PageGeometry = {
+  width: number;
+  height: number;
+  marginLeft: number;
+  marginRight: number;
+  marginTop: number;
+  marginBottom: number;
+  contentWidth?: number;
+  contentHeight?: number;
+};
+
 export type ParagraphElement = {
   kind: "paragraph";
   index: number;
@@ -58,6 +77,7 @@ export type TableElement = {
   cols: number;
   headerShaded: boolean;
   caption: string | null;
+  geometry?: TableGeometry;
 };
 
 export type ImageElement = {
@@ -83,6 +103,7 @@ export type DocModel = {
   elements: DocElement[];
   stylesDefined: string[];
   stylesUsed: string[];
+  page?: PageGeometry;
 };
 
 export const nodeIdOf = (e: DocElement): string =>
@@ -210,6 +231,43 @@ export const computeFindings = (model: DocModel): Finding[] => {
         nodeId: nodeIdOf(e),
         message: `Heading ends page ${e.geometry.absPage + 1}; its content starts on page ${nextPage + 1}`,
       });
+    }
+  }
+
+  // Table wider than the text column (geometry, phase 1).
+  if (model.page && typeof model.page.contentWidth === "number") {
+    const maxRight = model.page.marginLeft + model.page.contentWidth;
+    for (const e of els) {
+      if (e.kind !== "table" || !e.geometry) continue;
+      if (
+        typeof e.geometry.right === "number" &&
+        e.geometry.right > maxRight + 0.5
+      ) {
+        findings.push({
+          code: "TABLE_WIDTH_OVERFLOW",
+          severity: "advisory",
+          nodeId: nodeIdOf(e),
+          message: `Table extends ${(e.geometry.right - maxRight).toFixed(1)}mm past the text column`,
+        });
+      }
+    }
+  }
+
+  // Content past the bottom of the text area (geometry, phase 1).
+  if (model.page && typeof model.page.contentHeight === "number") {
+    const maxBottom = model.page.marginTop + model.page.contentHeight;
+    for (const e of els) {
+      const g =
+        e.kind === "table" || e.kind === "paragraph" ? e.geometry : undefined;
+      if (!g || typeof g.bottom !== "number") continue;
+      if (g.bottom > maxBottom + 1) {
+        findings.push({
+          code: "PAGE_OVERFLOW",
+          severity: "advisory",
+          nodeId: nodeIdOf(e),
+          message: `Content extends past the text area (${g.bottom.toFixed(1)}mm > ${maxBottom.toFixed(1)}mm)`,
+        });
+      }
     }
   }
 

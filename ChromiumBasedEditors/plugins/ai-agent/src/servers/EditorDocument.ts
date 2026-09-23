@@ -1584,12 +1584,13 @@ export class EditorDocumentTool {
     let geometryAvailable = false;
     try {
       const geoRaw = await this.callMethod("GetAgentDocumentSnapshot", []);
-      const geo =
-        typeof geoRaw === "string"
-          ? (JSON.parse(geoRaw) as {
-              paragraphs?: Array<Record<string, unknown>>;
-            })
-          : (geoRaw as { paragraphs?: Array<Record<string, unknown>> });
+      const geo = (
+        typeof geoRaw === "string" ? JSON.parse(geoRaw) : geoRaw
+      ) as {
+        paragraphs?: Array<Record<string, unknown>>;
+        tables?: Array<Record<string, unknown>>;
+        page?: Record<string, unknown>;
+      } | null;
       if (geo && Array.isArray(geo.paragraphs)) {
         const byId = new Map<number, Record<string, unknown>>();
         for (const g of geo.paragraphs) {
@@ -1613,6 +1614,43 @@ export class EditorDocumentTool {
               right: g.right === undefined ? undefined : Number(g.right),
             };
             geometryAvailable = true;
+          }
+        }
+
+        if (geo.page) {
+          model.page = {
+            width: Number(geo.page.width ?? 0),
+            height: Number(geo.page.height ?? 0),
+            marginLeft: Number(geo.page.marginLeft ?? 0),
+            marginRight: Number(geo.page.marginRight ?? 0),
+            marginTop: Number(geo.page.marginTop ?? 0),
+            marginBottom: Number(geo.page.marginBottom ?? 0),
+            contentWidth:
+              geo.page.contentWidth === undefined
+                ? undefined
+                : Number(geo.page.contentWidth),
+            contentHeight:
+              geo.page.contentHeight === undefined
+                ? undefined
+                : Number(geo.page.contentHeight),
+          };
+        }
+
+        const tableGeo = Array.isArray(geo.tables) ? geo.tables : [];
+        let ti = 0;
+        for (const el of model.elements) {
+          if (el.kind !== "table") continue;
+          const g = tableGeo[ti];
+          ti++;
+          if (g) {
+            el.geometry = {
+              pagesCount:
+                g.pagesCount === undefined ? undefined : Number(g.pagesCount),
+              top: g.top === undefined ? undefined : Number(g.top),
+              bottom: g.bottom === undefined ? undefined : Number(g.bottom),
+              left: g.left === undefined ? undefined : Number(g.left),
+              right: g.right === undefined ? undefined : Number(g.right),
+            };
           }
         }
       }
