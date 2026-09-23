@@ -65,8 +65,20 @@ class Servers {
       this.customServers.getTools(),
     ]);
 
+    const fileGeneratorTools = [
+      "generate_docx",
+      "generate_form",
+      "generate_pptx",
+    ];
+
     const items: Record<string, TMCPItem[]> = {
-      "desktop-editor": desktopEditorTools,
+      // When the editor bridge is available the agent must edit the open
+      // document in place, so the "create a new file" generators are hidden.
+      "desktop-editor": editorDocumentTools.length
+        ? desktopEditorTools.filter(
+            (tool) => !fileGeneratorTools.includes(tool.name)
+          )
+        : desktopEditorTools,
       "web-search": webSearchTools,
       ...customServersTools,
     };
