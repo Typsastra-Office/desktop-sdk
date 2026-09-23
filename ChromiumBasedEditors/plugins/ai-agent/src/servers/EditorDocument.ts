@@ -1460,10 +1460,18 @@ export class EditorDocumentTool {
           } catch (e) {
             headerShaded = false;
           }
+          var tableId = null;
+          try {
+            if (typeof el.GetInternalId === "function") tableId = el.GetInternalId();
+          } catch (e) {
+            tableId = null;
+          }
           elements.push({
             kind: "table",
             index: i,
-            id: "table:" + i,
+            id:
+              "table:" +
+              (tableId !== null && tableId !== undefined ? tableId : i),
             rows: rows,
             cols: cols,
             headerShaded: headerShaded,
@@ -1679,10 +1687,15 @@ export class EditorDocumentTool {
         }
 
         const tableGeo = Array.isArray(geo.tables) ? geo.tables : [];
+        const tableById = new Map<string, Record<string, unknown>>();
+        for (const g of tableGeo) {
+          if (g && g.id !== null && g.id !== undefined)
+            tableById.set("table:" + g.id, g);
+        }
         let ti = 0;
         for (const el of model.elements) {
           if (el.kind !== "table") continue;
-          const g = tableGeo[ti];
+          const g = (el.id && tableById.get(el.id)) || tableGeo[ti];
           ti++;
           if (g) {
             el.geometry = {
@@ -1714,9 +1727,13 @@ export class EditorDocumentTool {
         pagination: geometryAvailable ? "partial" : "absent",
         text_geometry: geometryAvailable ? "partial" : "absent",
         resolved_typography: "partial",
-        table_geometry: "absent",
+        table_geometry: model.elements.some(
+          (e) => e.kind === "table" && e.geometry
+        )
+          ? "partial"
+          : "absent",
         drawing_appearance: "absent",
-        header_footer: "absent",
+        header_footer: model.header || model.footer ? "partial" : "absent",
       },
       summary: summarizeFindings(findings),
       findings,

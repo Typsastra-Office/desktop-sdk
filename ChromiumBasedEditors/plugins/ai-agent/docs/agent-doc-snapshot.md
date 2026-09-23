@@ -89,9 +89,10 @@ and tables `geometry = { pagesCount, top, bottom, left, right }` (mm), plus
 from the editor engine; `coverage.pagination` / `coverage.text_geometry` become
 `partial` when present.
 
-Phase 1 adds geometry-based codes: `PAGE_OVERFLOW`, `COLUMN_OVERFLOW`,
-`HEADER_OVERLAP`, `HEADER_CLIPPED`, `TABLE_WIDTH_OVERFLOW`, `CELL_TEXT_CLIPPED`,
-`ORPHAN_HEADING`, `WIDOW_LINE`, `FONT_SUBSTITUTED`.
+Phase 1 geometry codes now implemented: `PAGE_OVERFLOW`, `HEADER_OVERLAP`,
+`HEADER_CLIPPED`, `FOOTER_OVERLAP`, `TABLE_WIDTH_OVERFLOW`, `ORPHAN_HEADING`,
+`WIDOW_LINE`, `ORPHAN_LINE`. Deferred (not yet exposed by the engine):
+`CELL_TEXT_CLIPPED` (needs per-cell text metrics) and `FONT_SUBSTITUTED`.
 
 ## Tool
 
