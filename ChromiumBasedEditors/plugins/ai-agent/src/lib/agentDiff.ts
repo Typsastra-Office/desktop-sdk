@@ -8,6 +8,7 @@
  */
 
 import type { DocElement, Finding } from "./agentFindings";
+import { nodeIdOf } from "./agentFindings";
 
 export type AgentSnapshot = {
   schema: string;
@@ -25,7 +26,7 @@ export type SnapshotDiff = {
 };
 
 const findingKey = (f: Finding) => `${f.code}:${f.nodeId}`;
-const nodeKey = (n: DocElement) => `${n.kind}:${n.index}`;
+const nodeKey = (n: DocElement) => nodeIdOf(n);
 
 const nodeFingerprint = (n: DocElement): string => {
   switch (n.kind) {

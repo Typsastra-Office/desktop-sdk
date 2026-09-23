@@ -152,6 +152,17 @@ describe("computeFindings", () => {
     );
   });
 
+  it("uses a stable id for the finding nodeId when present", () => {
+    const p = heading(0, "1.\t1. Intro");
+    p.id = "paragraph:1763520491";
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      elements: [p, body(1, "x")],
+    };
+    expect(computeFindings(model)[0].nodeId).toBe("paragraph:1763520491");
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],

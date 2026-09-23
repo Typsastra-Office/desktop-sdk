@@ -27,8 +27,10 @@ Consumers must ignore unknown fields within a compatible major version.
 
 ## Node
 
-A bounded, structural view keyed by `nodeId = "<kind>:<index>"`. Phase 1 adds
-durable ids (`part` + `w14:paraId`).
+A bounded, structural view keyed by `nodeId`. Paragraphs use the editor's
+durable paragraph id: `paragraph:<paraId>` (from `ApiParagraph.GetParaId()`,
+which survives edits), falling back to `paragraph:<index>`. Tables and other
+nodes use `<kind>:<index>`.
 
 ```jsonc
 // paragraph

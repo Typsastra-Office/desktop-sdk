@@ -1463,6 +1463,7 @@ export class EditorDocumentTool {
           elements.push({
             kind: "table",
             index: i,
+            id: "table:" + i,
             rows: rows,
             cols: cols,
             headerShaded: headerShaded,
@@ -1472,12 +1473,12 @@ export class EditorDocumentTool {
         }
 
         if (cls === "blockLvlSdt") {
-          elements.push({ kind: "toc", index: i });
+          elements.push({ kind: "toc", index: i, id: "toc:" + i });
           continue;
         }
 
         if (cls === "image" || cls === "drawing") {
-          elements.push({ kind: "image", index: i, caption: null });
+          elements.push({ kind: "image", index: i, id: "image:" + i, caption: null });
           continue;
         }
 
@@ -1496,6 +1497,12 @@ export class EditorDocumentTool {
         }
 
         var si = styleInfo(style);
+        var paraId = null;
+        try {
+          if (typeof el.GetParaId === "function") paraId = el.GetParaId();
+        } catch (e) {
+          paraId = null;
+        }
         var runs: any[] = [];
         var rcount = el.GetElementsCount ? el.GetElementsCount() : 0;
         for (var k = 0; k < rcount; k++) {
@@ -1522,6 +1529,7 @@ export class EditorDocumentTool {
         elements.push({
           kind: "paragraph",
           index: i,
+          id: "paragraph:" + (paraId !== null && paraId !== undefined ? paraId : i),
           style: style,
           text: text,
           numbering: numbering,
@@ -1622,12 +1630,29 @@ export class EditorDocumentTool {
   selectNode = async (nodeId: string) =>
     this.callEditorCommand(function () {
       var parts = String(scope.nodeId || "").split(":");
-      var index = parseInt(parts[1], 10);
-      if (isNaN(index)) return false;
+      var kind = parts[0];
+      var val = parts[1];
       var doc = Api.GetDocument();
-      var el = doc.GetElement ? doc.GetElement(index) : null;
-      if (!el) return false;
-      if (typeof el.Select === "function") {
+      var el = null;
+
+      if (kind === "paragraph") {
+        var want = Number(val);
+        var n = doc.GetElementsCount ? doc.GetElementsCount() : 0;
+        for (var i = 0; i < n; i++) {
+          var cand = doc.GetElement(i);
+          if (!cand || typeof cand.GetParaId !== "function") continue;
+          if (cand.GetParaId() === want) {
+            el = cand;
+            break;
+          }
+        }
+      }
+      if (!el) {
+        var idx = parseInt(val, 10);
+        if (!isNaN(idx) && typeof doc.GetElement === "function")
+          el = doc.GetElement(idx);
+      }
+      if (el && typeof el.Select === "function") {
         el.Select();
         return true;
       }

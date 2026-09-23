@@ -30,6 +30,8 @@ export type RunModel = {
 export type ParagraphElement = {
   kind: "paragraph";
   index: number;
+  /** Stable node id, e.g. "paragraph:<paraId>"; falls back to kind:index. */
+  id?: string;
   style: string;
   text: string;
   numbering: boolean;
@@ -39,6 +41,7 @@ export type ParagraphElement = {
 export type TableElement = {
   kind: "table";
   index: number;
+  id?: string;
   rows: number;
   cols: number;
   headerShaded: boolean;
@@ -48,12 +51,14 @@ export type TableElement = {
 export type ImageElement = {
   kind: "image";
   index: number;
+  id?: string;
   caption: string | null;
 };
 
 export type TocElement = {
   kind: "toc";
   index: number;
+  id?: string;
 };
 
 export type DocElement =
@@ -67,6 +72,9 @@ export type DocModel = {
   stylesDefined: string[];
   stylesUsed: string[];
 };
+
+export const nodeIdOf = (e: DocElement): string =>
+  e.id ?? `${e.kind}:${e.index}`;
 
 const HEADING_RE = /^Heading ([1-9])$/;
 const MANUAL_NUMBER_RE = /^\s*\d+(?:\.\d+)*[.)]\s+/;
@@ -97,7 +105,7 @@ export const computeFindings = (model: DocModel): Finding[] => {
         findings.push({
           code: "DOUBLE_NUMBERING",
           severity: "blocking",
-          nodeId: `paragraph:${e.index}`,
+          nodeId: nodeIdOf(e),
           message: `Heading has automatic numbering and a manual number: "${stripped.slice(0, 60)}"`,
           evidence: { text: e.text.slice(0, 80) },
         });
@@ -109,7 +117,7 @@ export const computeFindings = (model: DocModel): Finding[] => {
       findings.push({
         code: "DIRECT_FORMAT_OVERRIDE",
         severity: "advisory",
-        nodeId: `paragraph:${e.index}`,
+        nodeId: nodeIdOf(e),
         message: `Text uses direct formatting that overrides the "${e.style}" style`,
       });
     }
@@ -138,7 +146,7 @@ export const computeFindings = (model: DocModel): Finding[] => {
       findings.push({
         code: "EMPTY_SECTION",
         severity: "blocking",
-        nodeId: `paragraph:${e.index}`,
+        nodeId: nodeIdOf(e),
         message: `Section "${e.text.slice(0, 50)}" has no content`,
       });
     }
@@ -155,7 +163,7 @@ export const computeFindings = (model: DocModel): Finding[] => {
       findings.push({
         code: "HEADING_LEVEL_SKIP",
         severity: "advisory",
-        nodeId: `paragraph:${e.index}`,
+        nodeId: nodeIdOf(e),
         message: `Heading level jumps from ${lastLevel} to ${level}: "${e.text.slice(0, 50)}"`,
       });
     }
@@ -169,7 +177,7 @@ export const computeFindings = (model: DocModel): Finding[] => {
       findings.push({
         code: "MISSING_CAPTION",
         severity: "advisory",
-        nodeId: `${e.kind}:${e.index}`,
+        nodeId: nodeIdOf(e),
         message: `${e.kind === "table" ? "Table" : "Figure"} has no caption`,
       });
     }
