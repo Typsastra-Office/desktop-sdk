@@ -222,6 +222,33 @@ export class EditorDocumentTool {
       return true;
     });
 
+  // Applies a visual theme by restyling the document's Title and Heading
+  // styles, so headings inserted as HTML inherit the accent color.
+  applyTheme = async (accent: string, fontFamily?: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var names = ["Title", "Heading 1", "Heading 2", "Heading 3", "Heading 4"];
+      var color = scope.accent;
+      if (typeof color === "string" && typeof Api.HexColor === "function")
+        color = Api.HexColor(color);
+
+      var changed = 0;
+      for (var i = 0; i < names.length; i++) {
+        var style =
+          typeof doc.GetStyle === "function" ? doc.GetStyle(names[i]) : null;
+        if (!style || typeof style.GetTextPr !== "function") continue;
+        var tp = style.GetTextPr();
+        if (tp && typeof tp.SetColor === "function") {
+          tp.SetColor(color);
+          changed++;
+        }
+        if (scope.fontFamily && tp && typeof tp.SetFontFamily === "function") {
+          tp.SetFontFamily(scope.fontFamily);
+        }
+      }
+      return changed;
+    }, { accent, fontFamily });
+
   // Deterministic rule enforcement: set the font used for a script across the
   // whole document so font rules are guaranteed, not just suggested.
   enforceFont = async (script: string, font: string) =>
@@ -422,6 +449,19 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "apply_document_theme",
+        description:
+          "Give the document a consistent visual design by setting the accent color (and optional font) of the Title and Heading styles. Call this at the START of building a document, before inserting content, so headings inherit the design. Example accent: #1F3864.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            accent: { type: "string", description: "Hex color, e.g. #1F3864" },
+            fontFamily: { type: "string" },
+          },
+          required: ["accent"],
+        },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -490,6 +530,12 @@ export class EditorDocumentTool {
         result = await this.enforceFont(
           String(args.script ?? ""),
           String(args.font ?? "")
+        );
+        break;
+      case "apply_document_theme":
+        result = await this.applyTheme(
+          String(args.accent ?? ""),
+          args.fontFamily ? String(args.fontFamily) : undefined
         );
         break;
       case "get_document_text":

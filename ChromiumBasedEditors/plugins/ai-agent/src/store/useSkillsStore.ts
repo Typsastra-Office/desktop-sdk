@@ -23,7 +23,15 @@ const DEFAULT_SKILLS: Skill[] = [
     name: "Report building",
     description: "Build complete, designed documents",
     instruction:
-      "When asked to build a report, template or document, produce a complete, well-designed result: a title block, real headings (h1/h2/h3), sample content in every section and at least one data table.",
+      "When asked to build a report, template or document, ALWAYS: (1) call apply_document_theme first with a professional accent color (use #1F3864 unless the user gives one) so headings are styled; (2) start with a title block (an <h1> title, a one-line subtitle, and an author/date line); (3) use <h2> section headings and <h3> subheadings; (4) give every data <table> a header row and borders; (5) use <ul>/<ol> lists where appropriate; (6) write 2-3 sentences of realistic sample content under every section. Never output plain, unstyled text.",
+    enabled: true,
+  },
+  {
+    id: "docx.design",
+    name: "Visual design",
+    description: "Consistent accent color, headings and typography",
+    instruction:
+      "Give documents a consistent visual design: apply a single accent color via apply_document_theme, keep a clear heading hierarchy, and use tables and lists for structure instead of long plain paragraphs.",
     enabled: true,
   },
   {
@@ -88,8 +96,16 @@ const persistGlobal = (skills: Skill[], rules: Rule[]) => {
 
 const loaded = loadGlobal();
 
+// Keep the latest default instruction text (so improvements apply) while
+// preserving the user's enabled/disabled choices.
+const mergeSkills = (stored?: Skill[]): Skill[] =>
+  DEFAULT_SKILLS.map((def) => {
+    const saved = stored?.find((skill) => skill.id === def.id);
+    return saved ? { ...def, enabled: saved.enabled } : def;
+  });
+
 const useSkillsStore = create<UseSkillsStoreProps>((set, get) => ({
-  skills: loaded.skills?.length ? loaded.skills : DEFAULT_SKILLS,
+  skills: mergeSkills(loaded.skills),
   globalRules: loaded.rules ?? [],
   // Document-scoped rules live only for the current document session.
   documentRules: [],
