@@ -20,16 +20,16 @@ import useSkillsStore from "@/store/useSkillsStore";
 import useThreadsStore from "@/store/useThreadsStore";
 
 // Maximum number of self-review passes before the agent is allowed to finish.
-const MAX_REVIEWS = 2;
+const MAX_REVIEWS = 1;
 
 // Hard cap on tool-call rounds per user message, so a model that keeps calling
 // tools cannot loop forever and freeze the conversation.
-const MAX_TOOL_ROUNDS = 30;
+const MAX_TOOL_ROUNDS = 15;
 
 // Injected into the system prompt for a review pass. The agent must look at
 // what it produced and fix problems before the conversation can end.
 const REVIEW_INSTRUCTION =
-  "\n\n# Review before finishing\nBefore you finish, review the document you just produced: call get_document_html and check that every section has content, that headings use real heading styles (not bold text), that every table has a header row, fits the page and has a caption, that the table of contents is present, and that there are no large empty gaps. Fix anything that is wrong using the editing tools. When the document is complete, reply with a short summary and stop using tools.";
+  "\n\n# Review before finishing\nBefore you finish, review the document you just produced: call get_document_html and check that every section has content, that headings use real heading styles (not bold text), that every table has a header row, fits the page and has a caption, that the table of contents is present, and that there are no large empty gaps. Fix anything that is wrong IN PLACE with the editing tools. Do NOT clear or rebuild the whole document. When the document is complete, reply with a short summary and stop using tools.";
 
 type UseMessagesProps = {
   isReady: boolean;

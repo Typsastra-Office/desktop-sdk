@@ -52,6 +52,10 @@ const isPluginPresent = (): boolean =>
  * frame (i.e. `window.Asc.plugin` was initialized by the editor host).
  */
 export class EditorDocumentTool {
+  // Accent color of the active theme, remembered so newly inserted headings can
+  // be colored (HTML paste forces a black run color that overrides the style).
+  private themeAccent?: string;
+
   isAvailable = (): boolean => isPluginPresent();
 
   private callMethod = (
@@ -144,7 +148,17 @@ export class EditorDocumentTool {
   // Inserts rich HTML at the cursor. The editor parses semantic HTML into
   // real styles (headings, lists, tables, bold/italic), which is how a
   // designed document is produced.
-  insertHtml = async (html: string) => this.callMethod("PasteHtml", [html]);
+  // Inserts rich HTML at the cursor, then recolors any headings to match the
+  // active theme (HTML paste forces a direct black run color).
+  insertHtml = async (html: string) => {
+    const result = await this.callMethod("PasteHtml", [html]);
+
+    if (this.themeAccent) {
+      await this.colorHeadings(this.themeAccent);
+    }
+
+    return result;
+  };
 
   // Returns the whole document as HTML so the agent can review its own output.
   getDocumentHtml = async () =>
@@ -222,10 +236,13 @@ export class EditorDocumentTool {
       return true;
     });
 
-  // Applies a visual theme by restyling the document's Title and Heading
-  // styles, so headings inserted as HTML inherit the accent color.
-  applyTheme = async (accent: string, fontFamily?: string) =>
-    this.callEditorCommand(function () {
+  // Applies a visual theme: restyle the Title/Heading styles AND recolor the
+  // runs of existing heading paragraphs (HTML paste writes a direct black run
+  // color that overrides the style, so the style alone is not enough).
+  applyTheme = async (accent: string, fontFamily?: string) => {
+    this.themeAccent = accent;
+
+    return this.callEditorCommand(function () {
       var doc = Api.GetDocument();
       var names = ["Title", "Heading 1", "Heading 2", "Heading 3", "Heading 4"];
       var color = scope.accent;
@@ -246,8 +263,56 @@ export class EditorDocumentTool {
           tp.SetFontFamily(scope.fontFamily);
         }
       }
+
+      var total =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      for (var k = 0; k < total; k++) {
+        var p = doc.GetElement(k);
+        var st = p && typeof p.GetStyle === "function" ? p.GetStyle() : null;
+        var name = st && typeof st.GetName === "function" ? st.GetName() : "";
+        if (!name || !/^(Title|Heading [1-9])$/.test(name)) continue;
+        var runs = typeof p.GetElementsCount === "function" ? p.GetElementsCount() : 0;
+        for (var r = 0; r < runs; r++) {
+          var run = p.GetElement(r);
+          if (run && typeof run.SetColor === "function") {
+            run.SetColor(color);
+            changed++;
+          }
+        }
+      }
+
       return changed;
     }, { accent, fontFamily });
+  };
+
+  // Colors the runs of heading paragraphs with the given accent. Used after
+  // inserting HTML so new headings match the theme.
+  colorHeadings = async (accent: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var color = scope.accent;
+      if (typeof color === "string" && typeof Api.HexColor === "function")
+        color = Api.HexColor(color);
+
+      var changed = 0;
+      var total =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      for (var k = 0; k < total; k++) {
+        var p = doc.GetElement(k);
+        var st = p && typeof p.GetStyle === "function" ? p.GetStyle() : null;
+        var name = st && typeof st.GetName === "function" ? st.GetName() : "";
+        if (!name || !/^(Title|Heading [1-9])$/.test(name)) continue;
+        var runs = typeof p.GetElementsCount === "function" ? p.GetElementsCount() : 0;
+        for (var r = 0; r < runs; r++) {
+          var run = p.GetElement(r);
+          if (run && typeof run.SetColor === "function") {
+            run.SetColor(color);
+            changed++;
+          }
+        }
+      }
+      return changed;
+    }, { accent });
 
   // Deterministic rule enforcement: set the font used for a script across the
   // whole document so font rules are guaranteed, not just suggested.

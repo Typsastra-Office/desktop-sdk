@@ -107,6 +107,18 @@ When you have finished building:
 2. Check: every section has content; headings are hierarchical; tables have a
    header row, fit the page and are captioned; the TOC is present; there are no
    large empty gaps.
-3. Fix anything that is wrong with `replace_selection`, `insert_html`,
+3. Fix anything that is wrong IN PLACE with `replace_selection`, `insert_html`,
    `fit_table`, `set_paragraph_spacing` or `keep_with_next`.
 4. Only then write your final answer, briefly saying what you built.
+
+## Editing rules (important)
+
+- Work on what is already in the document. Do NOT delete and rebuild the whole
+  document to reorder or fix it. `clear_document` is only allowed when the
+  document is empty or the user explicitly asks to start over.
+- Prefer small, targeted edits (`replace_selection`, `insert_html` at the
+  cursor) over regenerating everything.
+- Re-running `insert_table_of_contents` refreshes it in place; it does not
+  create duplicates.
+- Never leave the task half-done: if a tool fails, adapt and continue instead of
+  restarting.
