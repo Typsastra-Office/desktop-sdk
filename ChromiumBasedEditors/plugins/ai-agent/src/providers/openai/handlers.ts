@@ -129,18 +129,21 @@ export const handleTextMessage = (
 
 export type { DeltaWithReasoning };
 
+type ToolCallDelta = {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+};
+
 /**
  * Creates a new tool-call message part from a streaming delta.
  */
-const createToolCallPart = (
-  delta?: ChatCompletionChunk.Choice["delta"]
-): ToolCallMessagePart =>
+const createToolCallPart = (toolCall?: ToolCallDelta): ToolCallMessagePart =>
   ({
     type: "tool-call",
     args: {},
-    argsText: delta?.tool_calls?.[0]?.function?.arguments ?? "",
-    toolName: delta?.tool_calls?.[0]?.function?.name ?? "",
-    toolCallId: delta?.tool_calls?.[0]?.id ?? "",
+    argsText: toolCall?.function?.arguments ?? "",
+    toolName: toolCall?.function?.name ?? "",
+    toolCallId: toolCall?.id ?? "",
   }) as ToolCallMessagePart;
 
 /**
@@ -150,10 +153,9 @@ const createToolCallPart = (
  */
 const mergeToolCall = (
   existing: ToolCallMessagePart,
-  delta?: ChatCompletionChunk.Choice["delta"]
+  toolCall?: ToolCallDelta
 ): ToolCallMessagePart => {
-  const update = delta?.tool_calls?.[0];
-  const argsText = existing.argsText + (update?.function?.arguments ?? "");
+  const argsText = existing.argsText + (toolCall?.function?.arguments ?? "");
 
   // Attempt to parse accumulated arguments as JSON
   let parsedArgs = {};
@@ -167,33 +169,70 @@ const mergeToolCall = (
     ...existing,
     args: parsedArgs,
     argsText,
-    toolName: existing.toolName || update?.function?.name || "",
-    toolCallId: existing.toolCallId || update?.id || "",
+    toolName: existing.toolName || toolCall?.function?.name || "",
+    toolCallId: existing.toolCallId || toolCall?.id || "",
   };
 };
 
 /**
  * Handles incoming tool call data from a streaming chunk.
- * Either creates a new tool-call part or merges into the existing one.
  *
- * @param responseMessage - The current response being built
- * @param chunk - The streaming chunk containing tool call data
+ * A chunk that carries a tool-call id starts a new tool call and is matched to
+ * an existing part by id (or appended as a new part). Chunks without an id are
+ * argument continuations for the most recently started tool call. This matters
+ * after a tool call: the response shell is cloned from the previous message, so
+ * blindly merging into the last part would concatenate the new call's arguments
+ * onto the previous call.
  */
 export const handleToolCall = (
   responseMessage: ThreadMessageLike,
   chunk: ChatCompletionChunk.Choice
 ): ThreadMessageLike => {
-  const delta = chunk.delta.tool_calls;
-  if (!delta || !Array.isArray(responseMessage.content)) return responseMessage;
+  const toolCalls = chunk.delta.tool_calls;
+  if (
+    !toolCalls ||
+    !Array.isArray(toolCalls) ||
+    !Array.isArray(responseMessage.content)
+  ) {
+    return responseMessage;
+  }
 
   const content = [...responseMessage.content];
-  const lastPart = content[content.length - 1];
 
-  // Create new tool-call or merge into existing
-  if (!lastPart || lastPart.type !== "tool-call") {
-    content.push(createToolCallPart(chunk.delta));
-  } else {
-    content[content.length - 1] = mergeToolCall(lastPart, chunk.delta);
+  for (const toolCall of toolCalls) {
+    const id = toolCall.id ?? "";
+
+    let position = -1;
+
+    if (id) {
+      position = content.findIndex(
+        (part) => part.type === "tool-call" && part.toolCallId === id
+      );
+
+      // The first chunk of a tool call may arrive without an id (or the id
+      // arrives a chunk later); backfill into the most recent id-less part.
+      if (position === -1) {
+        const lastIndex = content.length - 1;
+        if (
+          lastIndex >= 0 &&
+          content[lastIndex].type === "tool-call" &&
+          !content[lastIndex].toolCallId
+        ) {
+          position = lastIndex;
+        }
+      }
+    } else {
+      const lastIndex = content.length - 1;
+      if (lastIndex >= 0 && content[lastIndex].type === "tool-call") {
+        position = lastIndex;
+      }
+    }
+
+    if (position === -1) {
+      content.push(createToolCallPart(toolCall));
+    } else {
+      content[position] = mergeToolCall(content[position], toolCall);
+    }
   }
 
   return { ...responseMessage, content };

@@ -56,6 +56,16 @@ class OpenAIProvider extends AbstractBaseProvider<
   ChatCompletionMessageParam,
   OpenAI
 > {
+  // Abort controller for the in-flight stream, used to stop on demand.
+  private activeStreamController?: AbortController;
+
+  // Stop the current response: set the flag and abort the request so the
+  // stream ends immediately even if the model is not producing chunks.
+  stopMessage = (): void => {
+    this.stopFlag = true;
+    this.activeStreamController?.abort();
+  };
+
   // ============================================
   // Private Helper Methods
   // ============================================
@@ -219,12 +229,16 @@ class OpenAIProvider extends AbstractBaseProvider<
     const reasoning_effort =
       withThinking && modelThinking ? "medium" : undefined;
 
+    const controller = new AbortController();
+    this.activeStreamController = controller;
+
     const stream = await this.client.chat.completions.create({
       messages: [systemMessage, ...this.prevMessages, ...convertedMessages],
       model: this.modelKey,
       tools: this.tools,
       stream: true,
       reasoning_effort,
+      signal: controller.signal,
     });
 
     return stream;
@@ -247,6 +261,11 @@ class OpenAIProvider extends AbstractBaseProvider<
   > {
     if (!this.client) return;
 
+    let responseMessage = this.createResponseShell(
+      afterToolCall,
+      previousMessage
+    );
+
     try {
       const convertedMessages = convertMessagesToModelFormat(messages);
       const systemMessage = this.buildSystemMessage(this.systemPrompt);
@@ -261,10 +280,6 @@ class OpenAIProvider extends AbstractBaseProvider<
 
       this.pushHistory(convertedMessages);
 
-      let responseMessage = this.createResponseShell(
-        afterToolCall,
-        previousMessage
-      );
       let isStreamComplete = false;
       let hasUnfinalizedReasoning = false;
 
@@ -352,6 +367,12 @@ class OpenAIProvider extends AbstractBaseProvider<
         yield responseMessage;
       }
     } catch (error) {
+      if ((error as { name?: string })?.name === "AbortError") {
+        this.stopFlag = false;
+        yield { isEnd: true, responseMessage };
+        return;
+      }
+
       console.error("OpenAI sendMessage error:", error);
       yield {
         isEnd: true,

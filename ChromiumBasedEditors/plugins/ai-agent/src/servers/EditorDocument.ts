@@ -85,31 +85,61 @@ export class EditorDocumentTool {
   replaceSelection = async (text: string) =>
     this.callMethod("ReplaceTextSmart", [[text]]);
 
-  insertContent = async (text: string) =>
+  insertContent = async (
+    text: string,
+    style: Record<string, unknown> = {}
+  ) =>
     this.callEditorCommand(function () {
       var doc = Api.GetDocument();
       var p = Api.CreateParagraph();
       p.AddText(scope.text);
+      if (typeof scope.bold === "boolean") p.SetBold(scope.bold);
+      if (typeof scope.italic === "boolean") p.SetItalic(scope.italic);
+      if (scope.color) {
+        var c = scope.color;
+        if (typeof c === "string" && typeof Api.HexColor === "function")
+          c = Api.HexColor(c);
+        p.SetColor(c);
+      }
+      if (scope.fontSize) p.SetFontSize(scope.fontSize);
       doc.InsertContent([p]);
       return true;
-    }, { text });
+    }, { text, ...style });
 
   applyStyle = async (style: Record<string, unknown>) =>
     this.callEditorCommand(function () {
-      var range = Api.GetDocument().GetRangeBySelect();
-      if (!range) return false;
-      if (typeof scope.bold === "boolean") range.SetBold(scope.bold);
-      if (typeof scope.italic === "boolean") range.SetItalic(scope.italic);
+      var doc = Api.GetDocument();
+      var target = doc.GetRangeBySelect();
+      var selected =
+        target && typeof target.GetText === "function" ? target.GetText() : "";
+
+      // Only style actual selected text. Reporting success on an empty
+      // selection would make the model believe the formatting was applied.
+      if (!selected) return false;
+
+      if (typeof scope.bold === "boolean") target.SetBold(scope.bold);
+      if (typeof scope.italic === "boolean") target.SetItalic(scope.italic);
       if (scope.color) {
-        var col = scope.color;
-        if (typeof col === "string") {
-          if (typeof Api.HexColor === "function") col = Api.HexColor(col);
-        }
-        range.SetColor(col);
+        var c = scope.color;
+        if (typeof c === "string" && typeof Api.HexColor === "function")
+          c = Api.HexColor(c);
+        target.SetColor(c);
       }
-      if (scope.fontSize) range.SetFontSize(scope.fontSize);
+      if (scope.fontSize) target.SetFontSize(scope.fontSize);
       return true;
     }, style);
+
+  clearDocument = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var count =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      for (var i = count - 1; i >= 0; i--) {
+        var el = doc.GetElement(i);
+        if (el && typeof el.Delete === "function") el.Delete();
+      }
+      return true;
+    });
 
   getDocumentText = async () =>
     this.callEditorCommand(function () {
@@ -164,17 +194,23 @@ export class EditorDocumentTool {
       {
         name: "insert_content",
         description:
-          "Insert a new paragraph with the given text at the cursor in the open document.",
+          "Insert a new paragraph with the given text at the cursor in the open document. Apply formatting (bold, italic, color, fontSize) in the same call - prefer this over a separate apply_style call.",
         inputSchema: {
           type: "object",
-          properties: { text: { type: "string" } },
+          properties: {
+            text: { type: "string" },
+            bold: { type: "boolean" },
+            italic: { type: "boolean" },
+            color: { type: "string", description: "Hex color, e.g. #1F3864" },
+            fontSize: { type: "number" },
+          },
           required: ["text"],
         },
       },
       {
         name: "apply_style",
         description:
-          "Apply character formatting to the current selection in the open document.",
+          "Apply character formatting to the current selection, or to the paragraph at the cursor when nothing is selected.",
         inputSchema: {
           type: "object",
           properties: {
@@ -184,6 +220,12 @@ export class EditorDocumentTool {
             fontSize: { type: "number" },
           },
         },
+      },
+      {
+        name: "clear_document",
+        description:
+          "Delete all content from the open document. Use this to start over when the document needs to be rebuilt.",
+        inputSchema: { type: "object", properties: {} },
       },
       {
         name: "get_document_text",
@@ -224,10 +266,13 @@ export class EditorDocumentTool {
         result = await this.replaceSelection(String(args.text ?? ""));
         break;
       case "insert_content":
-        result = await this.insertContent(String(args.text ?? ""));
+        result = await this.insertContent(String(args.text ?? ""), args);
         break;
       case "apply_style":
         result = await this.applyStyle(args);
+        break;
+      case "clear_document":
+        result = await this.clearDocument();
         break;
       case "get_document_text":
         result = await this.getDocumentText();
