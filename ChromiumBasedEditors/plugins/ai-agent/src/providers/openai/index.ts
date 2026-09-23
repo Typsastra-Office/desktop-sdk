@@ -5,18 +5,13 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionSystemMessageParam,
   ChatCompletionTool,
-  ChatCompletionToolMessageParam,
 } from "openai/resources/chat/completions";
 import type { Model as OpenAIModel } from "openai/resources/models";
 import type { Model, TMCPItem, TProvider } from "@/lib/types";
 import { AbstractBaseProvider, type TData, type TErrorData } from "../base";
 import { getErrorCode, ProviderErrors } from "../errors";
 import { CREATE_TITLE_SYSTEM_PROMPT } from "../prompts";
-import {
-  createEmptyResponse,
-  createErrorResponse,
-  generateFallbackToolCallId,
-} from "./constants";
+import { createEmptyResponse, createErrorResponse } from "./constants";
 import {
   type DeltaWithReasoning,
   finalizeReasoningPart,
@@ -37,32 +32,6 @@ class OpenAIProvider extends AbstractBaseProvider<
 > {
   // Abort controller for the in-flight stream, used to stop on demand.
   private activeStreamController?: AbortController;
-
-  // Number of content parts carried over from the previous assistant turn when
-  // continuing after a tool call. Only the parts added after this index are new
-  // for this turn (and only they may be appended to the API history).
-  private afterToolCallBaseLength = 0;
-
-  /**
-   * Appends the assistant turn to the API history. When continuing after a tool
-   * call, the response shell is a clone of the previous message; only the newly
-   * added parts are pushed so old tool calls are not re-sent.
-   */
-  private pushAssistantTurn = (
-    responseMessage: ThreadMessageLike,
-    afterToolCall?: boolean
-  ) => {
-    let message = responseMessage;
-
-    if (afterToolCall && Array.isArray(message.content)) {
-      message = {
-        ...message,
-        content: message.content.slice(this.afterToolCallBaseLength),
-      };
-    }
-
-    this.pushSingleMessage(message);
-  };
 
   // Stop the current response: set the flag and abort the request so the
   // stream ends immediately even if the model is not producing chunks.
@@ -109,21 +78,6 @@ class OpenAIProvider extends AbstractBaseProvider<
       return cloneDeep(existingMessage);
     }
     return createEmptyResponse();
-  }
-
-  /**
-   * Appends messages to the conversation history.
-   */
-  private pushHistory(messages: ChatCompletionMessageParam[]): void {
-    this.prevMessages.push(...messages);
-  }
-
-  /**
-   * Converts and appends a single message to history.
-   */
-  private pushSingleMessage(message: ThreadMessageLike): void {
-    const providerMsg = convertMessagesToModelFormat([message]);
-    this.pushHistory(providerMsg);
   }
 
   /**
@@ -252,10 +206,6 @@ class OpenAIProvider extends AbstractBaseProvider<
       previousMessage
     );
 
-    this.afterToolCallBaseLength = Array.isArray(responseMessage.content)
-      ? responseMessage.content.length
-      : 0;
-
     try {
       const convertedMessages = convertMessagesToModelFormat(messages);
       const systemMessage = this.buildSystemMessage(this.systemPrompt);
@@ -267,8 +217,6 @@ class OpenAIProvider extends AbstractBaseProvider<
       );
 
       if (!stream) return;
-
-      this.pushHistory(convertedMessages);
 
       let isStreamComplete = false;
       let hasUnfinalizedReasoning = false;
@@ -294,7 +242,6 @@ class OpenAIProvider extends AbstractBaseProvider<
                 )
               : responseMessage;
 
-            this.pushAssistantTurn(responseMessage, afterToolCall);
             isStreamComplete = true;
             break;
           }
@@ -339,7 +286,6 @@ class OpenAIProvider extends AbstractBaseProvider<
           if (hasUnfinalizedReasoning) {
             responseMessage = finalizeReasoningPart(responseMessage, true);
           }
-          this.pushAssistantTurn(responseMessage, afterToolCall);
           stream.controller.abort();
           this.stopFlag = false;
 
@@ -364,6 +310,7 @@ class OpenAIProvider extends AbstractBaseProvider<
       }
 
       console.error("OpenAI sendMessage error:", error);
+
       yield {
         isEnd: true,
         responseMessage: createErrorResponse(error),
@@ -381,39 +328,9 @@ class OpenAIProvider extends AbstractBaseProvider<
   ): AsyncGenerator<
     ThreadMessageLike | { isEnd: true; responseMessage: ThreadMessageLike }
   > {
-    if (typeof message.content === "string") return message;
-
-    // A single assistant turn can contain several tool calls; every one needs
-    // a matching tool message or the API rejects the next request.
-    const toolResults: ChatCompletionToolMessageParam[] = [];
-
-    for (const part of message.content) {
-      if (part.type !== "tool-call" || part.result === undefined) continue;
-
-      toolResults.push({
-        role: "tool",
-        content: part.result,
-        tool_call_id: part.toolCallId ?? generateFallbackToolCallId(),
-      });
-    }
-
-    if (!toolResults.length) return message;
-
-    // Only send results that were not already pushed (a continuation message
-    // carries results from earlier turns too).
-    const existingIds = new Set(
-      this.prevMessages
-        .filter((m) => (m as { role?: string }).role === "tool")
-        .map((m) => (m as { tool_call_id?: string }).tool_call_id)
-    );
-
-    const newResults = toolResults.filter(
-      (result) => !existingIds.has(result.tool_call_id)
-    );
-
-    if (!newResults.length) return message;
-
-    this.pushHistory(newResults);
+    // The full conversation (assistant tool calls + their results) is rebuilt
+    // from the message list by the caller before each request, so nothing is
+    // appended to the history here.
     yield* this.sendMessage([], true, message, withThinking);
 
     return message;

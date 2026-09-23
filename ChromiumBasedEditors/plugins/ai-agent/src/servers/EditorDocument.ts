@@ -141,6 +141,15 @@ export class EditorDocumentTool {
       return true;
     });
 
+  // Inserts rich HTML at the cursor. The editor parses semantic HTML into
+  // real styles (headings, lists, tables, bold/italic), which is how a
+  // designed document is produced.
+  insertHtml = async (html: string) => this.callMethod("PasteHtml", [html]);
+
+  // Returns the whole document as HTML so the agent can review its own output.
+  getDocumentHtml = async () =>
+    this.callMethod("ConvertDocument", ["html", true, false, false, false]);
+
   getDocumentText = async () =>
     this.callEditorCommand(function () {
       return Api.GetDocument().GetText();
@@ -228,6 +237,27 @@ export class EditorDocumentTool {
         inputSchema: { type: "object", properties: {} },
       },
       {
+        name: "insert_html",
+        description:
+          "Insert rich HTML at the cursor. PREFER THIS to build a designed document: use <h1>/<h2>/<h3> for headings, <p> for paragraphs, <strong>/<em>, <ul>/<ol><li> for lists, <blockquote>, and <table> (with <thead>/<tbody>/<tr>/<th>/<td>) for data. The editor converts it to real styles.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            html: {
+              type: "string",
+              description: "An HTML fragment to insert.",
+            },
+          },
+          required: ["html"],
+        },
+      },
+      {
+        name: "get_document_html",
+        description:
+          "Return the whole open document as HTML. Use this AFTER building content to review the structure and formatting, then fix anything that looks wrong.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -273,6 +303,12 @@ export class EditorDocumentTool {
         break;
       case "clear_document":
         result = await this.clearDocument();
+        break;
+      case "insert_html":
+        result = await this.insertHtml(String(args.html ?? ""));
+        break;
+      case "get_document_html":
+        result = await this.getDocumentHtml();
         break;
       case "get_document_text":
         result = await this.getDocumentText();

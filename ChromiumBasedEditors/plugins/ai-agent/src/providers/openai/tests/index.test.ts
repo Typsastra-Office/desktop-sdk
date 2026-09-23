@@ -470,7 +470,9 @@ describe("OpenAIProvider", () => {
       }
 
       expect(results.length).toBeGreaterThan(0);
-      expect(provider.prevMessages.length).toBeGreaterThan(0);
+      // History is rebuilt from the full message list by the caller, so this
+      // method must not append to prevMessages.
+      expect(provider.prevMessages).toHaveLength(0);
     });
 
     it("should handle tool call with undefined toolCallId", async () => {

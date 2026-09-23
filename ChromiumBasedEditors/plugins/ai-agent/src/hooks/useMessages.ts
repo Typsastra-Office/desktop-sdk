@@ -84,6 +84,10 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
   ) => {
     if (!provider) return;
 
+    // Rebuild the API history from the full message list (which now contains
+    // the assistant tool calls and their results) so it stays valid.
+    provider.setCurrentProviderPrevMessages(useMessageStore.getState().messages);
+
     const stream = provider.sendMessageAfterToolCall(msg, extendedThinking);
     if (stream) handleStream(stream, true, messageUID);
   };
@@ -347,6 +351,8 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
 
       createMessages();
     }
+
+    provider.setCurrentProviderPrevMessages(useMessageStore.getState().messages);
 
     addMessage(userMessage);
 
