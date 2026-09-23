@@ -30,27 +30,6 @@ import {
   convertToolsToModelFormat,
 } from "./utils";
 
-// ============================================
-// Type Definitions
-// ============================================
-
-/**
- * Extracts the array type from ThreadMessageLike content,
- * excluding the string variant.
- */
-type MessageArray = Exclude<ThreadMessageLike["content"], string>;
-
-/**
- * Represents a single element in the message content array.
- */
-type ToolCallElement = MessageArray extends ReadonlyArray<infer T> ? T : never;
-
-/**
- * Extracts specifically the tool-call type from message content parts.
- * Used for type-safe access to tool call properties.
- */
-type ToolCallPart = Extract<ToolCallElement, { type: "tool-call" }>;
-
 class OpenAIProvider extends AbstractBaseProvider<
   ChatCompletionTool,
   ChatCompletionMessageParam,
@@ -148,25 +127,6 @@ class OpenAIProvider extends AbstractBaseProvider<
     });
 
     return { ...responseMessage, content: filtered };
-  }
-
-  /**
-   * Finds the last tool-call in a message's content array.
-   * Used to extract tool results for continuation.
-   */
-  private getLastToolCall(
-    message: ThreadMessageLike
-  ): ToolCallPart | undefined {
-    if (typeof message.content === "string") return undefined;
-
-    // Iterate backwards to find the most recent tool-call
-    for (let i = message.content.length - 1; i >= 0; i -= 1) {
-      const part = message.content[i];
-      if (part.type === "tool-call") {
-        return part as ToolCallPart;
-      }
-    }
-    return undefined;
   }
 
   // ============================================
@@ -393,16 +353,23 @@ class OpenAIProvider extends AbstractBaseProvider<
   > {
     if (typeof message.content === "string") return message;
 
-    const lastToolCall = this.getLastToolCall(message);
-    if (!lastToolCall) return message;
+    // A single assistant turn can contain several tool calls; every one needs
+    // a matching tool message or the API rejects the next request.
+    const toolResults: ChatCompletionToolMessageParam[] = [];
 
-    const toolResult: ChatCompletionToolMessageParam = {
-      role: "tool",
-      content: lastToolCall.result,
-      tool_call_id: lastToolCall.toolCallId ?? generateFallbackToolCallId(),
-    };
+    for (const part of message.content) {
+      if (part.type !== "tool-call" || part.result === undefined) continue;
 
-    this.pushHistory([toolResult]);
+      toolResults.push({
+        role: "tool",
+        content: part.result,
+        tool_call_id: part.toolCallId ?? generateFallbackToolCallId(),
+      });
+    }
+
+    if (!toolResults.length) return message;
+
+    this.pushHistory(toolResults);
     yield* this.sendMessage([], true, message, withThinking);
 
     return message;

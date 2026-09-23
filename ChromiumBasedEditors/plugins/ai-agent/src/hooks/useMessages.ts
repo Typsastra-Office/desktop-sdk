@@ -64,21 +64,83 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     return message;
   };
 
+  const attachToolResult = (
+    msg: ThreadMessageLike,
+    idx: number,
+    result: unknown
+  ): ThreadMessageLike => {
+    if (typeof msg.content === "string") return msg;
+
+    const content = msg.content.map((item, index) =>
+      index === idx ? { ...item, result } : item
+    );
+
+    return { ...msg, content };
+  };
+
+  const continueAfterTools = (
+    msg: ThreadMessageLike,
+    messageUID: string
+  ) => {
+    if (!provider) return;
+
+    const stream = provider.sendMessageAfterToolCall(msg, extendedThinking);
+    if (stream) handleStream(stream, true, messageUID);
+  };
+
+  /**
+   * Executes every pending tool call in order, pausing for approval when
+   * needed, then continues the conversation once all results are attached.
+   * The model may emit several tool calls in one turn; each must get a result
+   * before the next request or the API rejects the continuation.
+   */
+  const runToolCalls = async (msg: ThreadMessageLike, messageUID: string) => {
+    if (typeof msg.content === "string") return;
+
+    let updated = msg;
+    const total = (updated.content as unknown[]).length;
+
+    for (let i = 0; i < total; i++) {
+      const part = (updated.content as Array<Record<string, unknown>>)[i];
+
+      if (part.type !== "tool-call" || part.result) continue;
+
+      const toolName = (part.toolName as string) ?? "";
+      const type = server.getServerType(toolName);
+      const name = toolName.replace(`${type}_`, "");
+
+      if (!checkAllowAlways(type, name)) {
+        updateLastMessage(updated);
+        updateMessage(messageUID, updated);
+        setManageToolData({ message: updated, idx: i, messageUID });
+        return;
+      }
+
+      const result = await callTools(
+        toolName,
+        (part.args as Record<string, unknown>) ?? {}
+      );
+
+      updated = attachToolResult(updated, i, result);
+      updateLastMessage(updated);
+      updateMessage(messageUID, updated);
+    }
+
+    continueAfterTools(updated, messageUID);
+  };
+
   const approveToolCall = (allowAlways: boolean) => {
     if (!manageToolData) return;
 
-    const toolCall = manageToolData?.message?.content[manageToolData.idx];
+    const { message, idx, messageUID } = manageToolData;
+    const part = (message.content as Array<Record<string, unknown>>)[idx];
 
-    if (
-      !toolCall ||
-      typeof toolCall !== "object" ||
-      !("type" in toolCall) ||
-      toolCall.type !== "tool-call"
-    )
+    if (!part || part.type !== "tool-call") {
+      setManageToolData(undefined);
       return;
+    }
 
-    const toolName = toolCall.toolName;
-
+    const toolName = (part.toolName as string) ?? "";
     const type = server.getServerType(toolName);
     const name = toolName.replace(`${type}_`, "");
 
@@ -86,91 +148,20 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       setAllowAlways(true, type, name);
     }
 
-    handleToolCall(
-      manageToolData.message,
-      manageToolData.idx,
-      manageToolData.messageUID,
-      true,
-      false
-    );
-
     setManageToolData(undefined);
+    runToolCalls(message, messageUID);
   };
 
   const denyToolCall = () => {
     if (!manageToolData) return;
 
-    handleToolCall(
-      manageToolData.message,
-      manageToolData.idx,
-      manageToolData.messageUID,
-      false,
-      true
-    );
-
+    const { message, idx, messageUID } = manageToolData;
     setManageToolData(undefined);
-  };
 
-  const handleToolCall = async (
-    msg: ThreadMessageLike,
-    idx: number,
-    messageUID: string,
-    accept?: boolean,
-    deny?: boolean
-  ) => {
-    const toolCall = msg.content[idx];
-
-    if (
-      !toolCall ||
-      typeof toolCall !== "object" ||
-      !("type" in toolCall) ||
-      toolCall.type !== "tool-call"
-    )
-      return;
-
-    const toolName = toolCall.toolName;
-
-    const type = server.getServerType(toolName);
-    const name = toolName.replace(`${type}_`, "");
-
-    if (checkAllowAlways(type, name) || accept || deny) {
-      const result = deny
-        ? "User deny tool call"
-        : await callTools(
-            toolCall.toolName,
-            toolCall.args as Record<string, unknown>
-          );
-
-      // Create a new content array with the updated tool call
-      const updatedContent = Array.isArray(msg.content)
-        ? msg.content.map((item, index) =>
-            index === idx ? { ...toolCall, result } : item
-          )
-        : msg.content;
-
-      // Create a new message object with updated content
-      const updatedMessage = { ...msg, content: updatedContent };
-
-      updateLastMessage(updatedMessage);
-      updateMessage(messageUID, updatedMessage);
-
-      if (!provider) return;
-
-      const streamAfterToolCall = provider.sendMessageAfterToolCall(
-        updatedMessage,
-        extendedThinking
-      );
-
-      if (streamAfterToolCall) {
-        handleStream(streamAfterToolCall, true, messageUID);
-      }
-    } else {
-      setManageToolData({
-        message: msg,
-        idx,
-        messageUID,
-      });
-    }
+    const updated = attachToolResult(message, idx, "User denied tool call");
+    updateLastMessage(updated);
+    updateMessage(messageUID, updated);
+    runToolCalls(updated, messageUID);
   };
 
   const handleStream = async (
@@ -228,7 +219,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
               );
 
               if (toolCallIdx !== -1) {
-                handleToolCall(lastMessage, toolCallIdx, messageUID);
+                runToolCalls(lastMessage, messageUID);
 
                 return;
               }
