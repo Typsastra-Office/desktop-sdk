@@ -58,6 +58,14 @@ class Provider {
     this.currentProvider?.setReasoningEffort(effort);
   };
 
+  setCurrentProviderInstructions = (extra: string) => {
+    if (!this.currentProvider) return;
+
+    this.currentProvider.setSystemPrompt(
+      extra ? `${SYSTEM_PROMPT}\n\n${extra}` : SYSTEM_PROMPT
+    );
+  };
+
   setCurrentProviderModel = (modelKey: string, isReasoning?: boolean) => {
     if (!this.currentProvider) return;
 

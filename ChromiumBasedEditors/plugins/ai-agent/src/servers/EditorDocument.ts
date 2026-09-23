@@ -222,6 +222,46 @@ export class EditorDocumentTool {
       return true;
     });
 
+  // Deterministic rule enforcement: set the font used for a script across the
+  // whole document so font rules are guaranteed, not just suggested.
+  enforceFont = async (script: string, font: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var ranges = { khm: [0x1780, 0x17ff], lao: [0x0e80, 0x0eff] };
+      var range = ranges[scope.script] || null;
+      if (!range) return 0;
+
+      var count =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      var changed = 0;
+
+      for (var i = 0; i < count; i++) {
+        var p = doc.GetElement(i);
+        var runs =
+          p && typeof p.GetElementsCount === "function"
+            ? p.GetElementsCount()
+            : 0;
+        for (var j = 0; j < runs; j++) {
+          var run = p.GetElement(j);
+          if (!run || typeof run.GetText !== "function") continue;
+          var text = run.GetText() || "";
+          var hit = false;
+          for (var k = 0; k < text.length; k++) {
+            var code = text.charCodeAt(k);
+            if (code >= range[0] && code <= range[1]) {
+              hit = true;
+              break;
+            }
+          }
+          if (hit && typeof run.SetFontFamily === "function") {
+            run.SetFontFamily(scope.font);
+            changed++;
+          }
+        }
+      }
+      return changed;
+    }, { script, font });
+
   getDocumentText = async () =>
     this.callEditorCommand(function () {
       return Api.GetDocument().GetText();
@@ -369,6 +409,19 @@ export class EditorDocumentTool {
         inputSchema: { type: "object", properties: {} },
       },
       {
+        name: "enforce_font",
+        description:
+          "Deterministically set the font for a script across the whole document. script is 'khm' (Khmer) or 'lao' (Lao). Use this to satisfy font rules (e.g. Khmer OS Siemreap for Khmer).",
+        inputSchema: {
+          type: "object",
+          properties: {
+            script: { type: "string", enum: ["khm", "lao"] },
+            font: { type: "string" },
+          },
+          required: ["script", "font"],
+        },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -432,6 +485,12 @@ export class EditorDocumentTool {
         break;
       case "insert_page_break":
         result = await this.insertPageBreak();
+        break;
+      case "enforce_font":
+        result = await this.enforceFont(
+          String(args.script ?? ""),
+          String(args.font ?? "")
+        );
         break;
       case "get_document_text":
         result = await this.getDocumentText();

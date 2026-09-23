@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import useProviders from "@/store/useProviders";
 import { Providers } from "./sub-components/providers";
 import { Servers } from "./sub-components/servers";
+import { Skills } from "./sub-components/skills";
 import { Wallet } from "./sub-components/wallet";
 import { WebSearch } from "./sub-components/web-search";
 
@@ -110,6 +111,11 @@ const Settings = () => {
               label: t("WebSearch"),
               content: <WebSearch />,
               disabled: !providers.length,
+            },
+            {
+              value: "skills",
+              label: t("Skills"),
+              content: <Skills />,
             },
           ]}
         />

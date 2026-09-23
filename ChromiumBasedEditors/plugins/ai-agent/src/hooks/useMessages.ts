@@ -16,6 +16,7 @@ import useMessageStore from "@/store/useMessageStore";
 import useModelsStore from "@/store/useModelsStore";
 import useProviders from "@/store/useProviders";
 import useServersStore from "@/store/useServersStore";
+import useSkillsStore from "@/store/useSkillsStore";
 import useThreadsStore from "@/store/useThreadsStore";
 
 type UseMessagesProps = {
@@ -50,6 +51,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
   const { items: contextItems, clearContext } = useContextStore();
   const { currentProvider } = useProviders();
   const { currentModel, extendedThinking } = useModelsStore();
+  const { getActiveInstructions } = useSkillsStore();
 
   const threadIdRef = useRef(threadId);
 
@@ -89,6 +91,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     // Rebuild the API history from the full message list (which now contains
     // the assistant tool calls and their results) so it stays valid.
     provider.setCurrentProviderPrevMessages(useMessageStore.getState().messages);
+    provider.setCurrentProviderInstructions(getActiveInstructions());
 
     const stream = provider.sendMessageAfterToolCall(msg, extendedThinking);
     if (stream) handleStream(stream, true, messageUID);
@@ -365,6 +368,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     }
 
     provider.setCurrentProviderPrevMessages(useMessageStore.getState().messages);
+    provider.setCurrentProviderInstructions(getActiveInstructions());
 
     addMessage(userMessage);
 
