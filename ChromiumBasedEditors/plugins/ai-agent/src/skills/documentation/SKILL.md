@@ -21,6 +21,22 @@ Call `apply_document_theme` before inserting content:
   given, otherwise a professional accent such as `#1F3864` (navy), `#0B5D3B`
   (green) or `#7A1F1F` (maroon).
 
+## Styling: what HTML keeps, and what to use instead
+
+The editor's HTML paste KEEPS: `<h1>`-`<h3>` headings, `<strong>`, `<em>`,
+`<u>`, `<ul>`/`<ol>` lists and `<table>`. It DROPS: inline `style="color:..."`
+and `background:...`, `<mark>` highlights, `<hr>` and `<blockquote>` styling,
+and it converts `<th>`/`<thead>` to bold `<td>`.
+
+Therefore:
+
+- Never rely on `style="color:..."` — it will be ignored.
+- Use `apply_document_theme` for heading color.
+- Use `set_text_color` to color a run of text.
+- Use `apply_style` for bold/italic/size on a real selection.
+- Use `fit_table` to size/center tables and `add_caption` for captions.
+- Use `set_paragraph_spacing` and `keep_with_next` for layout.
+
 ## 1. Title block
 
 Build a title block with `insert_html`:

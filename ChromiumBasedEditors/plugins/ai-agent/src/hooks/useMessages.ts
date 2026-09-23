@@ -22,6 +22,10 @@ import useThreadsStore from "@/store/useThreadsStore";
 // Maximum number of self-review passes before the agent is allowed to finish.
 const MAX_REVIEWS = 2;
 
+// Hard cap on tool-call rounds per user message, so a model that keeps calling
+// tools cannot loop forever and freeze the conversation.
+const MAX_TOOL_ROUNDS = 30;
+
 // Injected into the system prompt for a review pass. The agent must look at
 // what it produced and fix problems before the conversation can end.
 const REVIEW_INSTRUCTION =
@@ -66,6 +70,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
   // Review-loop state: whether the agent made edits and how many reviews it did.
   const editsMadeRef = useRef(false);
   const reviewCountRef = useRef(0);
+  const toolRoundsRef = useRef(0);
 
   useEffect(() => {
     if (!isReady) return;
@@ -99,6 +104,14 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     messageUID: string
   ) => {
     if (!provider) return;
+
+    // Safety cap so a model that keeps calling tools cannot loop forever.
+    toolRoundsRef.current += 1;
+    if (toolRoundsRef.current > MAX_TOOL_ROUNDS) {
+      setIsStreamRunning(false);
+      setIsRequestRunning(false);
+      return;
+    }
 
     // Rebuild the API history from the full message list (which now contains
     // the assistant tool calls and their results) so it stays valid.
@@ -316,6 +329,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
 
     editsMadeRef.current = false;
     reviewCountRef.current = 0;
+    toolRoundsRef.current = 0;
 
     let fileContent: FileMessagePart[] = [];
 

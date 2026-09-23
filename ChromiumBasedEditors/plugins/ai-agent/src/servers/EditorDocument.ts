@@ -399,7 +399,8 @@ export class EditorDocumentTool {
       return true;
     }, { enabled });
 
-  // Sets the page margins (in points) for the document.
+  // Sets the page margins (in points) for the document. The builder API works
+  // in twips (1/1440 inch), so the values are converted.
   setPageMargins = async (
     left: number,
     top: number,
@@ -408,16 +409,31 @@ export class EditorDocumentTool {
   ) =>
     this.callEditorCommand(function () {
       var doc = Api.GetDocument();
+      var toTwips = function (pt) {
+        return Math.round(pt * 20);
+      };
+      var l = toTwips(scope.left);
+      var t = toTwips(scope.top);
+      var r = toTwips(scope.right);
+      var b = toTwips(scope.bottom);
+
       var sections =
         typeof doc.GetSections === "function" ? doc.GetSections() : null;
+
+      if (sections && sections.length) {
+        for (var i = 0; i < sections.length; i++) {
+          if (typeof sections[i].SetPageMargins === "function")
+            sections[i].SetPageMargins(l, t, r, b);
+        }
+        return true;
+      }
+
       var section =
-        sections && sections.length
-          ? sections[0]
-          : typeof doc.GetFinalSection === "function"
-            ? doc.GetFinalSection()
-            : null;
+        typeof doc.GetFinalSection === "function"
+          ? doc.GetFinalSection()
+          : null;
       if (!section || typeof section.SetPageMargins !== "function") return false;
-      section.SetPageMargins(scope.left, scope.top, scope.right, scope.bottom);
+      section.SetPageMargins(l, t, r, b);
       return true;
     }, { left, top, right, bottom });
 
@@ -676,7 +692,7 @@ export class EditorDocumentTool {
       {
         name: "set_page_margins",
         description:
-          "Set the page margins in points (left, top, right, bottom) for the document.",
+          "Set the page margins in POINTS (left, top, right, bottom) for the document. Typical values: 56 pt (2 cm) or 72 pt (1 inch).",
         inputSchema: {
           type: "object",
           properties: {
