@@ -61,7 +61,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           style={{ height: "calc(100vh - 56px)" }}
         >
           {!isSettings ? <ChatList /> : null}
-          <div className="w-full">{children}</div>
+          <div className="flex-1 min-w-0">{children}</div>
         </div>
       </main>
     </div>

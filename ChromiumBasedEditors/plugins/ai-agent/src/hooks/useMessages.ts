@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { createMessage, updateMessage } from "@/database/messages";
 import { getThread } from "@/database/metadata";
 import { provider, type SendMessageReturnType } from "@/providers";
+import { createErrorResponse } from "@/providers/openai/constants";
 import server from "@/servers";
 import useAttachmentsStore from "@/store/useAttachmentsStore";
 import useMessageStore from "@/store/useMessageStore";
@@ -182,59 +183,84 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     const messageUID =
       afterToolCall && messageUIDProp ? messageUIDProp : crypto.randomUUID();
 
-    if (messages)
-      for await (const message of stream) {
-        if ("isEnd" in message) {
-          if (threadIdRef.current !== threadId) {
-            setIsStreamRunning(false);
-            setIsRequestRunning(false);
+    const failStream = (error: unknown) => {
+      const errorMessage = createErrorResponse(error);
 
-            return;
-          }
-          if (message.responseMessage.status?.type === "incomplete") {
-            addMessage(message.responseMessage);
+      if (!initedMessage) {
+        addMessage(errorMessage);
+        createMessage(threadId, messageUID, errorMessage);
+        initedMessage = true;
+      } else {
+        updateMessage(messageUID, errorMessage);
+        updateLastMessage(errorMessage);
+      }
 
-            setIsStreamRunning(false);
-            setIsRequestRunning(false);
+      setIsStreamRunning(false);
+      setIsRequestRunning(false);
+    };
 
-            return;
-          }
-          const lastMessage = message.responseMessage;
-
-          if (
-            lastMessage?.role === "assistant" &&
-            Array.isArray(lastMessage.content)
-          ) {
-            const toolCallIdx = lastMessage.content.findIndex(
-              (c) => c.type === "tool-call" && !c.result
-            );
-
-            if (toolCallIdx !== -1) {
-              handleToolCall(lastMessage, toolCallIdx, messageUID);
+    try {
+      if (messages)
+        for await (const message of stream) {
+          if ("isEnd" in message) {
+            if (threadIdRef.current !== threadId) {
+              setIsStreamRunning(false);
+              setIsRequestRunning(false);
 
               return;
             }
+            if (message.responseMessage.status?.type === "incomplete") {
+              addMessage(message.responseMessage);
+
+              setIsStreamRunning(false);
+              setIsRequestRunning(false);
+
+              return;
+            }
+            const lastMessage = message.responseMessage;
+
+            if (
+              lastMessage?.role === "assistant" &&
+              Array.isArray(lastMessage.content)
+            ) {
+              const toolCallIdx = lastMessage.content.findIndex(
+                (c) => c.type === "tool-call" && !c.result
+              );
+
+              if (toolCallIdx !== -1) {
+                handleToolCall(lastMessage, toolCallIdx, messageUID);
+
+                return;
+              }
+            }
+
+            setIsStreamRunning(false);
+            setIsRequestRunning(false);
+
+            return;
           }
 
-          setIsStreamRunning(false);
-          setIsRequestRunning(false);
+          if (!initedMessage) {
+            if (!afterToolCall) setIsRequestRunning(true);
+            addMessage(message);
+            createMessage(threadId, messageUID, message);
+            initedMessage = true;
+          } else {
+            updateMessage(messageUID, message);
 
-          return;
-        }
-
-        if (!initedMessage) {
-          if (!afterToolCall) setIsRequestRunning(true);
-          addMessage(message);
-          createMessage(threadId, messageUID, message);
-          initedMessage = true;
-        } else {
-          updateMessage(messageUID, message);
-
-          if (threadIdRef.current === threadId) {
-            updateLastMessage(message);
+            if (threadIdRef.current === threadId) {
+              updateLastMessage(message);
+            }
           }
         }
-      }
+
+      // The stream finished without an explicit end marker.
+      setIsStreamRunning(false);
+      setIsRequestRunning(false);
+    } catch (error) {
+      console.error("Message stream failed:", error);
+      failStream(error);
+    }
   };
 
   const onNew = async (message: AppendMessage) => {
