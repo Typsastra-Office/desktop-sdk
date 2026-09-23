@@ -1,0 +1,29 @@
+name: ai-agent tests
+
+on:
+  push:
+    paths:
+      - "ChromiumBasedEditors/plugins/ai-agent/**"
+  pull_request:
+    paths:
+      - "ChromiumBasedEditors/plugins/ai-agent/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ChromiumBasedEditors/plugins/ai-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ChromiumBasedEditors/plugins/ai-agent/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npx vitest run src/lib src/servers
