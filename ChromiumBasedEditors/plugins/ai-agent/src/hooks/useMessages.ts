@@ -20,7 +20,7 @@ import useSkillsStore from "@/store/useSkillsStore";
 import useThreadsStore from "@/store/useThreadsStore";
 
 // Maximum number of self-review passes before the agent is allowed to finish.
-const MAX_REVIEWS = 2;
+const MAX_REVIEWS = 1;
 
 // Hard cap on tool-call rounds per user message, so a model that keeps calling
 // tools cannot loop forever and freeze the conversation.
@@ -30,10 +30,10 @@ const MAX_TOOL_ROUNDS = 20;
 // conversation context does not balloon and degrade the model.
 const MAX_TOOL_RESULT = 6000;
 
-// Injected into the system prompt for a review pass. The agent must look at
-// what it produced and fix problems before the conversation can end.
+// Injected into the system prompt for a repair pass, together with the blocking
+// findings collected from the document feedback snapshot.
 const REVIEW_INSTRUCTION =
-  "\n\n# Review before finishing\nBefore you finish, review the document you just produced: call get_document_html and check that every section has content, that headings use real heading styles (not bold text), that every table has a header row, fits the page and has a caption, that the table of contents is present, and that there are no large empty gaps. Fix anything that is wrong IN PLACE with the editing tools. Do NOT clear or rebuild the whole document. When the document is complete, reply with a short summary and stop using tools.";
+  "\n\n# Verify before finishing\nCall get_document_feedback and fix EVERY blocking finding by its nodeId (blocking codes: DOUBLE_NUMBERING, EMPTY_SECTION). Fix advisory findings (DIRECT_FORMAT_OVERRIDE, MISSING_CAPTION, TOC_MISSING) when reasonable. Fix problems IN PLACE with the editing tools; do NOT clear or rebuild the document. After fixing, call get_document_feedback again to confirm the blocking findings are gone. Then reply with a short summary and stop using tools.";
 
 type UseMessagesProps = {
   isReady: boolean;
@@ -148,7 +148,7 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       const name = toolName.replace(`${type}_`, "");
 
       // Track whether the agent modified the document (drives the review loop).
-      if (!name.startsWith("get_") && name !== "snapshot_page") {
+      if (!name.startsWith("get_")) {
         editsMadeRef.current = true;
       }
 
@@ -212,6 +212,31 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
     runToolCalls(updated, messageUID);
   };
 
+  // Runs the document feedback snapshot and returns its findings. Used to
+  // decide whether a repair pass is needed (findings-driven review).
+  const evaluateDocument = async () => {
+    try {
+      const result = await server.callTools(
+        "editor",
+        "get_document_feedback",
+        {}
+      );
+      const text =
+        typeof result === "string" ? result : JSON.stringify(result ?? "");
+      const parsed = JSON.parse(text) as {
+        findings?: Array<{
+          code: string;
+          severity: string;
+          nodeId: string;
+          message: string;
+        }>;
+      };
+      return Array.isArray(parsed?.findings) ? parsed.findings : [];
+    } catch {
+      return [];
+    }
+  };
+
   const handleStream = async (
     stream: SendMessageReturnType,
     afterToolCall?: boolean,
@@ -273,31 +298,36 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
               }
             }
 
-            // Agentic review loop: after the agent has edited the document and
-            // there is nothing left to run, make it review its own work (read
-            // it back and fix problems) before the conversation can end.
+            // Findings-driven repair loop: only continue if the document still
+            // has blocking findings; otherwise finish without another round.
             if (editsMadeRef.current && reviewCountRef.current < MAX_REVIEWS) {
-              reviewCountRef.current += 1;
-              editsMadeRef.current = false;
+              const blocking = (await evaluateDocument()).filter(
+                (f) => f.severity === "blocking"
+              );
 
-              if (provider) {
-                provider.setCurrentProviderPrevMessages(
-                  useMessageStore.getState().messages
-                );
-                provider.setCurrentProviderInstructions(
-                  `${getActiveInstructions()}\n${REVIEW_INSTRUCTION}`
-                );
+              if (blocking.length > 0) {
+                reviewCountRef.current += 1;
+                editsMadeRef.current = false;
 
-                const reviewStream = provider.sendMessage(
-                  [],
-                  false,
-                  undefined,
-                  extendedThinking
-                );
+                if (provider) {
+                  provider.setCurrentProviderPrevMessages(
+                    useMessageStore.getState().messages
+                  );
+                  provider.setCurrentProviderInstructions(
+                    `${getActiveInstructions()}\n${REVIEW_INSTRUCTION}\n\n# Blocking findings to fix (by nodeId)\n${JSON.stringify(blocking, null, 2)}`
+                  );
 
-                if (reviewStream) {
-                  handleStream(reviewStream, true, messageUID);
-                  return;
+                  const reviewStream = provider.sendMessage(
+                    [],
+                    false,
+                    undefined,
+                    extendedThinking
+                  );
+
+                  if (reviewStream) {
+                    handleStream(reviewStream, true, messageUID);
+                    return;
+                  }
                 }
               }
             }

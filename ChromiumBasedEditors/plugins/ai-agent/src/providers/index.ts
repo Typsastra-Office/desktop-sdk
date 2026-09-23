@@ -1,5 +1,6 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import { CURRENT_MODEL_KEY } from "@/lib/constants";
+import { trimConversationHistory } from "@/lib/history";
 import type { Model, ProviderType, TMCPItem, TProvider } from "@/lib/types";
 import type { TData } from "./base";
 import { SYSTEM_PROMPT } from "./prompts";
@@ -82,7 +83,7 @@ class Provider {
   setCurrentProviderPrevMessages = (prevMessages: ThreadMessageLike[]) => {
     if (!this.currentProvider) return;
 
-    this.currentProvider.setPrevMessages(prevMessages);
+    this.currentProvider.setPrevMessages(trimConversationHistory(prevMessages));
   };
 
   getCurrentProviderModel = () => {

@@ -72,14 +72,15 @@ class Servers {
     ]);
 
     // The agent must never create or open documents, and must not wipe the
-    // document and rebuild it - it edits what is already there.
+    // document and rebuild it - it edits what is already there. clear_document
+    // is exposed deliberately (start-over / recovery), but only for a clean
+    // restart at the beginning of a task.
     const hiddenTools = [
       "generate_docx",
       "generate_form",
       "generate_pptx",
       "file_opener",
       "form_field_filler",
-      "clear_document",
     ];
 
     const items: Record<string, TMCPItem[]> = {

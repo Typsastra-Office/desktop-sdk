@@ -1,3 +1,9 @@
+import {
+  computeFindings,
+  summarizeFindings,
+  type DocElement,
+  type DocModel,
+} from "@/lib/agentFindings";
 import type { TMCPItem } from "@/lib/types";
 
 // These identifiers are injected by the editor's plugin host when a
@@ -151,11 +157,14 @@ export class EditorDocumentTool {
   // Inserts rich HTML at the cursor, then recolors any headings to match the
   // active theme (HTML paste forces a direct black run color).
   insertHtml = async (html: string) => {
-    const result = await this.callMethod("PasteHtml", [html]);
+    // The editor's HTML paste drops <br>, which merges intended line breaks
+    // (an address, a signature block) onto one line. Turn them into paragraph
+    // breaks first so the line structure survives.
+    const normalized = String(html).replace(/<br\s*\/?>/gi, "</p><p>");
+    const result = await this.callMethod("PasteHtml", [normalized]);
 
-    if (this.themeAccent) {
-      await this.colorHeadings(this.themeAccent);
-    }
+    // Make the named styles authoritative over the paste's direct formatting.
+    await this.conformToStyles();
 
     return result;
   };
@@ -244,7 +253,18 @@ export class EditorDocumentTool {
 
     return this.callEditorCommand(function () {
       var doc = Api.GetDocument();
-      var names = ["Title", "Heading 1", "Heading 2", "Heading 3", "Heading 4"];
+      var names = [
+        "Title",
+        "Heading 1",
+        "Heading 2",
+        "Heading 3",
+        "Heading 4",
+        "Heading 5",
+        "Heading 6",
+        "Heading 7",
+        "Heading 8",
+        "Heading 9",
+      ];
       var color = scope.accent;
       if (typeof color === "string" && typeof Api.HexColor === "function")
         color = Api.HexColor(color);
@@ -262,6 +282,8 @@ export class EditorDocumentTool {
         if (scope.fontFamily && tp && typeof tp.SetFontFamily === "function") {
           tp.SetFontFamily(scope.fontFamily);
         }
+        // Write the modified properties back (GetTextPr returns a copy).
+        if (typeof style.SetTextPr === "function") style.SetTextPr(tp);
       }
 
       var total =
@@ -314,6 +336,84 @@ export class EditorDocumentTool {
       return changed;
     }, { accent });
 
+  // Copies each paragraph style's font, size and colour onto its runs. The
+  // editor attaches direct formatting on paste (which overrides the named
+  // styles), so this makes the styles authoritative without styling each piece
+  // of content in the HTML.
+  conformToStyles = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof doc.GetStyle !== "function") return 0;
+      var cache: Record<string, unknown> = {};
+      function textPrFor(name: string) {
+        if (cache[name] !== undefined) return cache[name];
+        var s = doc.GetStyle(name);
+        cache[name] = s && typeof s.GetTextPr === "function" ? s.GetTextPr() : null;
+        return cache[name];
+      }
+      function hexOf(tp: any) {
+        if (!tp || typeof tp.GetColor !== "function") return null;
+        var c = tp.GetColor();
+        if (!c) return null;
+        var r: number | undefined;
+        var g: number | undefined;
+        var b: number | undefined;
+        if (typeof c.GetRGB === "function") {
+          var o = c.GetRGB();
+          if (o) {
+            r = o.r;
+            g = o.g;
+            b = o.b;
+          }
+        } else if (typeof c.value === "number") {
+          var v = c.value;
+          r = (v >> 16) & 255;
+          g = (v >> 8) & 255;
+          b = v & 255;
+        }
+        if (r === undefined || g === undefined || b === undefined) return null;
+        var h2 = function (x: number) {
+          var s = x.toString(16);
+          return s.length < 2 ? "0" + s : s;
+        };
+        return "#" + h2(r) + h2(g) + h2(b);
+      }
+
+      var n = doc.GetElementsCount ? doc.GetElementsCount() : 0;
+      var changed = 0;
+      for (var i = 0; i < n; i++) {
+        var p = doc.GetElement(i);
+        var st = p && typeof p.GetStyle === "function" ? p.GetStyle() : null;
+        var name = st && typeof st.GetName === "function" ? st.GetName() : "";
+        if (!name) name = "Normal";
+        var tp: any = textPrFor(name);
+        if (!tp) continue;
+        var hexColor = hexOf(tp);
+        var fam =
+          typeof tp.GetFontFamily === "function"
+            ? tp.GetFontFamily("ascii")
+            : null;
+        var size =
+          typeof tp.GetFontSize === "function" ? Number(tp.GetFontSize()) : 0;
+
+        var runs = p.GetElementsCount ? p.GetElementsCount() : 0;
+        for (var r = 0; r < runs; r++) {
+          var run: any = p.GetElement(r);
+          if (!run) continue;
+          if (run.GetClassType && run.GetClassType() !== "run") continue;
+          if (hexColor && typeof run.SetColor === "function") {
+            run.SetColor(Api.HexColor(hexColor));
+            changed++;
+          }
+          if (fam && typeof run.SetFontFamily === "function")
+            run.SetFontFamily(fam);
+          if (size && typeof run.SetFontSize === "function")
+            run.SetFontSize(size);
+        }
+      }
+      return changed;
+    });
+
   // Find and replace text across the document. Use this to repair merged or
   // duplicated text without rebuilding.
   findAndReplace = async (search: string, replace: string) =>
@@ -341,7 +441,7 @@ export class EditorDocumentTool {
       return true;
     }, { index, text });
 
-  // Insert a new paragraph after the paragraph at the given index, optionally
+  // Inserts a new paragraph after the paragraph at the given index, optionally
   // with a named style. Use this to split merged paragraphs (e.g. a heading
   // stuck to the previous paragraph).
   insertParagraphAfter = async (
@@ -364,6 +464,241 @@ export class EditorDocumentTool {
       p.InsertParagraph(np, "after", true);
       return true;
     }, { index, text, style: styleName });
+
+  // Applies Word's built-in multilevel numbering to the heading styles so
+  // section numbers ("1", "1.1", "1.1.1") are automatic and update when
+  // headings move. Do NOT type numbers into the heading text when using this.
+  numberHeadings = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+
+      // The global Api.CreateNumbering is the presentation bullet factory; the
+      // document-level factory returns a multilevel ApiNumbering whose levels
+      // can be customised ("%1", "%1.%2", ...).
+      var numbering =
+        typeof doc.CreateNumbering === "function"
+          ? doc.CreateNumbering("numbered")
+          : null;
+      if (!numbering || typeof numbering.GetLevel !== "function") {
+        numbering =
+          typeof Api.CreateNumbering === "function"
+            ? Api.CreateNumbering("numbered")
+            : null;
+      }
+      if (!numbering || typeof numbering.GetLevel !== "function") return 0;
+
+      var formats = ["%1.", "%1.%2", "%1.%2.%3", "%1.%2.%3.%4"];
+      for (var lvl = 0; lvl < formats.length; lvl++) {
+        var level = numbering.GetLevel(lvl);
+        if (level && typeof level.SetCustomType === "function") {
+          level.SetCustomType("decimal", formats[lvl], "left");
+        }
+      }
+
+      var total =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      var applied = 0;
+      for (var i = 0; i < total; i++) {
+        var p = doc.GetElement(i);
+        var st = p && typeof p.GetStyle === "function" ? p.GetStyle() : null;
+        var name = st && typeof st.GetName === "function" ? st.GetName() : "";
+        var match = /^Heading ([1-9])$/.exec(name);
+        if (!match) continue;
+        var idx = parseInt(match[1], 10) - 1;
+        if (idx >= formats.length) continue;
+
+        // Remove any manually typed number ("1.", "2.3)") so the automatic
+        // numbering does not double up (e.g. "1.1 1. Introduction").
+        var raw = typeof p.GetText === "function" ? p.GetText() : "";
+        var stripped = raw.replace(/^\s*\d+(?:\.\d+)*[.)]\s+/, "");
+        if (stripped && stripped !== raw && typeof p.SetText === "function") {
+          p.SetText(stripped.trim());
+        }
+
+        var lvlObj = numbering.GetLevel(idx);
+        if (lvlObj && typeof p.SetNumbering === "function") {
+          p.SetNumbering(lvlObj);
+          applied++;
+        }
+      }
+      return applied;
+    });
+
+  // Adds a "Page X of Y" page-number field to the document footer.
+  addPageNumbers = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var sections =
+        typeof doc.GetSections === "function" ? doc.GetSections() : null;
+      if (!sections || !sections.length) return false;
+
+      var section = sections[0];
+      if (typeof section.GetFooter !== "function") return false;
+      var footer = section.GetFooter("default", true);
+      if (!footer) return false;
+
+      var p = Api.CreateParagraph();
+      if (typeof p.SetJc === "function") p.SetJc("center");
+      if (typeof p.AddText === "function") p.AddText("Page ");
+      if (typeof p.AddPageNumber === "function") p.AddPageNumber();
+      if (typeof p.AddText === "function") p.AddText(" of ");
+      if (typeof p.AddPagesCount === "function") p.AddPagesCount();
+
+      footer.Push(p);
+      return true;
+    });
+
+  // One-shot document setup: theme (named styles) + page margins + footer page
+  // numbers, in a single editor call so the agent does not need three rounds.
+  setupDocument = async (accent: string, fontFamily?: string, marginsPt?: number) => {
+    this.themeAccent = accent;
+    return this.callEditorCommand(
+      function () {
+        var doc = Api.GetDocument();
+        var font = scope.fontFamily ? String(scope.fontFamily) : undefined;
+        var accent = String(scope.accent || "#1B4965");
+        var gray = "#5A6B7B";
+        // Define the whole style set once. Content then only uses these styles
+        // (semantic HTML / named styles), so it does not need per-item styling.
+        var defs: Array<Record<string, unknown>> = [
+          { name: "Normal", size: 11, color: "#20303C" },
+          { name: "Title", size: 28, color: accent, bold: true, after: 6 },
+          { name: "Subtitle", size: 14, color: gray, italic: true, after: 12 },
+          { name: "Heading 1", size: 18, color: accent, bold: true, before: 16, after: 6, keep: true },
+          { name: "Heading 2", size: 15, color: accent, bold: true, before: 12, after: 4, keep: true },
+          { name: "Heading 3", size: 13, color: accent, bold: true, before: 10, after: 4, keep: true },
+          { name: "Heading 4", size: 12, color: accent, bold: true, before: 8, after: 3, keep: true },
+          { name: "Heading 5", size: 11.5, color: accent, bold: true, keep: true },
+          { name: "Heading 6", size: 11, color: accent, bold: true, keep: true },
+          { name: "Heading 7", size: 11, color: accent, bold: true },
+          { name: "Heading 8", size: 11, color: accent, bold: true },
+          { name: "Heading 9", size: 11, color: accent, bold: true },
+          { name: "Quote", size: 11, color: gray, italic: true },
+          { name: "Caption", size: 9, color: gray, italic: true, before: 2, after: 10 },
+        ];
+
+        for (var di = 0; di < defs.length; di++) {
+          var def = defs[di];
+          var style =
+            typeof doc.GetStyle === "function"
+              ? doc.GetStyle(String(def.name))
+              : null;
+          if (!style) continue;
+
+          if (typeof style.GetTextPr === "function") {
+            var tp = style.GetTextPr();
+            if (tp && typeof tp.SetColor === "function")
+              tp.SetColor(Api.HexColor(String(def.color)));
+            if (font && tp && typeof tp.SetFontFamily === "function")
+              tp.SetFontFamily(font);
+            if (def.size && tp && typeof tp.SetFontSize === "function")
+              tp.SetFontSize(Number(def.size));
+            if (typeof def.bold === "boolean" && tp && typeof tp.SetBold === "function")
+              tp.SetBold(Boolean(def.bold));
+            if (typeof def.italic === "boolean" && tp && typeof tp.SetItalic === "function")
+              tp.SetItalic(Boolean(def.italic));
+            // GetTextPr returns a copy, so it must be written back.
+            if (typeof style.SetTextPr === "function") style.SetTextPr(tp);
+          }
+
+          if (typeof style.GetParaPr === "function") {
+            var pp = style.GetParaPr();
+            if (pp) {
+              if (typeof def.before === "number" && pp.SetSpacingBefore)
+                pp.SetSpacingBefore(Number(def.before));
+              if (typeof def.after === "number" && pp.SetSpacingAfter)
+                pp.SetSpacingAfter(Number(def.after));
+              if (def.keep && pp.SetKeepNext) pp.SetKeepNext(true);
+              if (def.keep && pp.SetKeepLines) pp.SetKeepLines(true);
+              if (typeof style.SetParaPr === "function") style.SetParaPr(pp);
+            }
+          }
+        }
+
+        var sections =
+          typeof doc.GetSections === "function" ? doc.GetSections() : null;
+
+        if (typeof scope.marginsPt === "number" && sections && sections.length) {
+          var tw = Math.round(scope.marginsPt * 20);
+          for (var s = 0; s < sections.length; s++) {
+            if (typeof sections[s].SetPageMargins === "function")
+              sections[s].SetPageMargins(tw, tw, tw, tw);
+          }
+        }
+
+        if (sections && sections.length) {
+          var section = sections[0];
+          if (typeof section.GetFooter === "function") {
+            var footer = section.GetFooter("default", true);
+            if (footer) {
+              // Keep one base paragraph and reuse it so page numbers do not
+              // stack on repeated calls.
+              var fguard = 0;
+              while (
+                typeof footer.RemoveElement === "function" &&
+                typeof footer.GetElementsCount === "function" &&
+                footer.GetElementsCount() > 1 &&
+                fguard < 100
+              ) {
+                footer.RemoveElement(footer.GetElementsCount() - 1);
+                fguard++;
+              }
+              var fp =
+                typeof footer.GetElementsCount === "function" &&
+                footer.GetElementsCount() >= 1
+                  ? footer.GetElement(0)
+                  : Api.CreateParagraph();
+              if (
+                typeof footer.GetElementsCount === "function" &&
+                footer.GetElementsCount() < 1
+              )
+                footer.Push(fp);
+              if (typeof fp.SetText === "function") fp.SetText("");
+              if (typeof fp.SetJc === "function") fp.SetJc("center");
+              if (typeof fp.AddText === "function") fp.AddText("Page ");
+              if (typeof fp.AddPageNumber === "function") fp.AddPageNumber();
+              if (typeof fp.AddText === "function") fp.AddText(" of ");
+              if (typeof fp.AddPagesCount === "function") fp.AddPagesCount();
+            }
+          }
+        }
+        return true;
+      },
+      { accent, fontFamily, marginsPt }
+    );
+  };
+
+  // Inserts a title block using the real Title/Subtitle styles, so the document
+  // title is not part of the numbered heading sequence.
+  insertTitle = async (title: string, subtitle: string, meta: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var getStyle = function (n) {
+        return typeof doc.GetStyle === "function" ? doc.GetStyle(n) : null;
+      };
+
+      var p1 = Api.CreateParagraph();
+      p1.AddText(scope.title);
+      var ts = getStyle("Title");
+      if (ts && typeof p1.SetStyle === "function") p1.SetStyle(ts);
+      doc.InsertContent([p1]);
+
+      if (scope.subtitle) {
+        var p2 = Api.CreateParagraph();
+        p2.AddText(scope.subtitle);
+        var ss = getStyle("Subtitle");
+        if (ss && typeof p2.SetStyle === "function") p2.SetStyle(ss);
+        else if (typeof p2.SetItalic === "function") p2.SetItalic(true);
+        doc.InsertContent([p2]);
+      }
+
+      if (scope.meta) {
+        var p3 = Api.CreateParagraph();
+        p3.AddText(scope.meta);
+        doc.InsertContent([p3]);
+      }
+      return true;
+    }, { title, subtitle, meta });
 
   // Deterministic rule enforcement: set the font used for a script across the
   // whole document so font rules are guaranteed, not just suggested.
@@ -434,6 +769,9 @@ export class EditorDocumentTool {
     }, { text, label });
 
   // Inserts an image (URL or base64) as its own paragraph, optionally centered.
+  // The builder takes EMU (1 pt = 12700 EMU); passing points produced a
+  // near-zero-size, invisible image, so the conversion and a verification are
+  // done here.
   insertImage = async (
     src: string,
     width: number,
@@ -442,13 +780,410 @@ export class EditorDocumentTool {
   ) =>
     this.callEditorCommand(function () {
       var doc = Api.GetDocument();
-      var image = Api.CreateImage(scope.src, scope.width, scope.height);
+      var emuPerPt = 12700;
+      var before =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+
+      var image = Api.CreateImage(
+        scope.src,
+        scope.width * emuPerPt,
+        scope.height * emuPerPt
+      );
+      if (!image) return false;
+
       var p = Api.CreateParagraph();
-      if (typeof p.AddDrawing === "function") p.AddDrawing(image);
+      if (typeof p.AddDrawing !== "function" || !p.AddDrawing(image))
+        return false;
       if (scope.align && typeof p.SetJc === "function") p.SetJc(scope.align);
       doc.InsertContent([p]);
-      return true;
+
+      var after =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      return after > before;
     }, { src, width, height, align: align === "justify" ? "center" : align });
+
+  // Inserts a real chart. chartType: bar | line | pie | area | scatter.
+  // series is an array of numeric series; seriesNames/catNames are labels.
+  insertChart = async (
+    chartType: string,
+    series: number[][],
+    seriesNames: string[],
+    catNames: string[],
+    title: string,
+    width: number,
+    height: number
+  ) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof Api.CreateChart !== "function") return false;
+      var emuPerPt = 12700;
+
+      // Map friendly names to the chart types this build actually registers.
+      var typeMap: Record<string, string> = {
+        bar: "bar",
+        column: "bar",
+        line: "line3D",
+        line3d: "line3D",
+        area: "area",
+        pie: "pie",
+        doughnut: "doughnut",
+        scatter: "scatter",
+      };
+      var chartType =
+        typeMap[String(scope.chartType || "bar").toLowerCase()] || "bar";
+
+      var chart = Api.CreateChart(
+        chartType,
+        scope.series,
+        scope.seriesNames,
+        scope.catNames,
+        scope.width * emuPerPt,
+        scope.height * emuPerPt,
+        24
+      );
+      if (!chart) return false;
+      if (scope.title && typeof chart.SetTitle === "function")
+        chart.SetTitle(scope.title, 14, true);
+
+      var p = Api.CreateParagraph();
+      if (typeof p.AddDrawing !== "function" || !p.AddDrawing(chart))
+        return false;
+      if (typeof p.SetJc === "function") p.SetJc("center");
+      doc.InsertContent([p]);
+      return true;
+    }, { chartType, series, seriesNames, catNames, title, width, height });
+
+  // Applies a design to a table: a shaded header row, optional banded rows and
+  // bottom borders, with contrasting header text. Defaults to the last table.
+  styleTable = async (opts: {
+    tableIndex?: number;
+    headerFill?: string;
+    headerTextColor?: string;
+    bandFill?: string;
+    bandRows?: boolean;
+    borders?: boolean;
+    columnWidths?: number[];
+    emphasizeLastRows?: number;
+    totalFill?: string;
+  }) =>
+    this.callEditorCommand(function () {
+      function hexRgb(hex: string) {
+        var h = String(hex || "").replace("#", "");
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [
+          parseInt(h.substr(0, 2), 16) || 0,
+          parseInt(h.substr(2, 2), 16) || 0,
+          parseInt(h.substr(4, 2), 16) || 0,
+        ];
+      }
+      function setRuns(
+        container: any,
+        colorHex?: string,
+        size?: number,
+        bold?: boolean,
+        italic?: boolean
+      ) {
+        var kind = container.GetClassType ? container.GetClassType() : "";
+        if (kind === "paragraph") {
+          var runs = container.GetElementsCount ? container.GetElementsCount() : 0;
+          for (var r = 0; r < runs; r++) {
+            var run = container.GetElement(r);
+            if (!run) continue;
+            if (colorHex && run.SetColor) run.SetColor(Api.HexColor(colorHex));
+            if (size && run.SetFontSize) run.SetFontSize(size);
+            if (typeof bold === "boolean" && run.SetBold) run.SetBold(bold);
+            if (typeof italic === "boolean" && run.SetItalic) run.SetItalic(italic);
+          }
+          return;
+        }
+        var n = container.GetElementsCount ? container.GetElementsCount() : 0;
+        for (var i = 0; i < n; i++)
+          setRuns(container.GetElement(i), colorHex, size, bold, italic);
+      }
+
+      var doc = Api.GetDocument();
+      var tables =
+        typeof doc.GetAllTables === "function" ? doc.GetAllTables() : [];
+      if (!tables.length) return false;
+      var idx =
+        typeof scope.tableIndex === "number" ? scope.tableIndex : tables.length - 1;
+      var t = tables[idx];
+      if (!t) return false;
+
+      var hf = hexRgb(String(scope.headerFill || "#1B4965"));
+      var htx = String(scope.headerTextColor || "#FFFFFF");
+      var bf = hexRgb(String(scope.bandFill || "#F2F6FA"));
+      var rows = t.GetRowsCount();
+      var cols = t.GetRow(0).GetCellsCount();
+
+      t.GetRow(0).SetTableHeader(true);
+      for (var c = 0; c < cols; c++) {
+        var hc = t.GetCell(0, c);
+        hc.SetShd("clear", hf[0], hf[1], hf[2]);
+        hc.SetCellMarginTop(70);
+        hc.SetCellMarginBottom(70);
+        hc.SetCellMarginLeft(120);
+        hc.SetCellMarginRight(120);
+        setRuns(hc.GetContent(), htx, undefined, true, false);
+      }
+      var emph =
+        typeof scope.emphasizeLastRows === "number"
+          ? scope.emphasizeLastRows
+          : 0;
+      var emphStart = rows - emph;
+      var tf = hexRgb(String(scope.totalFill || "#D6E4F0"));
+
+      for (var r = 1; r < rows; r++) {
+        for (var cc = 0; cc < cols; cc++) {
+          var bc = t.GetCell(r, cc);
+          if (r >= emphStart) {
+            bc.SetShd("clear", tf[0], tf[1], tf[2]);
+          } else if (scope.bandRows && r % 2 === 0) {
+            bc.SetShd("clear", bf[0], bf[1], bf[2]);
+          }
+          bc.SetCellMarginTop(50);
+          bc.SetCellMarginBottom(50);
+          bc.SetCellMarginLeft(120);
+          bc.SetCellMarginRight(120);
+          if (scope.borders !== false)
+            bc.SetCellBorderBottom("single", 4, 0, 205, 216, 226);
+          setRuns(bc.GetContent(), "#20303C", undefined, r >= emphStart, false);
+        }
+      }
+
+      // Optional per-column widths (array of percentages), applied to every
+      // cell in the column so narrow columns (Qty/Unit) stay readable.
+      if (Array.isArray(scope.columnWidths)) {
+        var widths = scope.columnWidths as unknown[];
+        for (var cw = 0; cw < cols && cw < widths.length; cw++) {
+          var pct = Number(widths[cw]);
+          if (!pct) continue;
+          for (var rw = 0; rw < rows; rw++) {
+            var wcell = t.GetCell(rw, cw);
+            if (wcell && typeof wcell.SetWidth === "function")
+              wcell.SetWidth("percent", pct);
+          }
+        }
+      }
+      return true;
+    }, { ...opts });
+
+  // Inserts a full-width shaded title banner (cover) with a white title and
+  // subtitle, plus an optional meta line underneath.
+  insertBanner = async (
+    title: string,
+    subtitle: string,
+    meta: string,
+    accent: string
+  ) => {
+    await this.callMethod("PasteHtml", [
+      "<table><tbody><tr><td><p>" +
+        title +
+        "</p><p>" +
+        (subtitle || "") +
+        "</p></td></tr></tbody></table>",
+    ]);
+    return this.callEditorCommand(function () {
+      function hexRgb(hex: string) {
+        var h = String(hex || "").replace("#", "");
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [
+          parseInt(h.substr(0, 2), 16) || 0,
+          parseInt(h.substr(2, 2), 16) || 0,
+          parseInt(h.substr(4, 2), 16) || 0,
+        ];
+      }
+      function setRuns(
+        container: any,
+        colorHex?: string,
+        size?: number,
+        bold?: boolean,
+        italic?: boolean
+      ) {
+        var kind = container.GetClassType ? container.GetClassType() : "";
+        if (kind === "paragraph") {
+          var runs = container.GetElementsCount ? container.GetElementsCount() : 0;
+          for (var r = 0; r < runs; r++) {
+            var run = container.GetElement(r);
+            if (!run) continue;
+            if (colorHex && run.SetColor) run.SetColor(Api.HexColor(colorHex));
+            if (size && run.SetFontSize) run.SetFontSize(size);
+            if (typeof bold === "boolean" && run.SetBold) run.SetBold(bold);
+            if (typeof italic === "boolean" && run.SetItalic) run.SetItalic(italic);
+          }
+          return;
+        }
+        var n = container.GetElementsCount ? container.GetElementsCount() : 0;
+        for (var i = 0; i < n; i++)
+          setRuns(container.GetElement(i), colorHex, size, bold, italic);
+      }
+
+      var doc = Api.GetDocument();
+      var tables = doc.GetAllTables();
+      var t = tables[tables.length - 1];
+      var cell = t.GetCell(0, 0);
+      var ac = hexRgb(String(scope.accent || "#1B4965"));
+      cell.SetShd("clear", ac[0], ac[1], ac[2]);
+      if (cell.SetWidth) cell.SetWidth("percent", 100);
+      cell.SetCellMarginTop(360);
+      cell.SetCellMarginBottom(360);
+      cell.SetCellMarginLeft(280);
+      cell.SetCellMarginRight(280);
+      cell.SetCellBorderTop("single", 12, 0, ac[0], ac[1], ac[2]);
+      cell.SetCellBorderBottom("single", 12, 0, ac[0], ac[1], ac[2]);
+      cell.SetCellBorderLeft("single", 12, 0, ac[0], ac[1], ac[2]);
+      cell.SetCellBorderRight("single", 12, 0, ac[0], ac[1], ac[2]);
+      var content = cell.GetContent();
+      var pc = content.GetElementsCount();
+      for (var pi = 0; pi < pc; pi++) {
+        var para = content.GetElement(pi);
+        if (para.SetJc) para.SetJc("center");
+        setRuns(para, "#FFFFFF", pi === 0 ? 30 : 13, pi === 0, pi === 1);
+      }
+      if (scope.meta) {
+        var mp = Api.CreateParagraph();
+        mp.AddText(String(scope.meta));
+        if (mp.SetJc) mp.SetJc("center");
+        var runs = mp.GetElementsCount();
+        for (var r = 0; r < runs; r++) {
+          var run = mp.GetElement(r);
+          if (run && run.SetColor) {
+            run.SetColor(Api.HexColor("#5A6B7B"));
+            run.SetFontSize(11);
+            run.SetItalic(true);
+          }
+        }
+        doc.InsertContent([mp]);
+      }
+      var t2 = doc.GetAllTables();
+      var tb = t2[t2.length - 1];
+      if (tb && tb.SetWidth) tb.SetWidth("percent", 100);
+      return true;
+    }, { accent, meta });
+  };
+
+  // Inserts a shaded callout box with a thick accent bar on the left.
+  insertCallout = async (text: string, accent: string) => {
+    await this.callMethod("PasteHtml", [
+      "<table><tbody><tr><td><p>" + text + "</p></td></tr></tbody></table>",
+    ]);
+    return this.callEditorCommand(function () {
+      function hexRgb(hex: string) {
+        var h = String(hex || "").replace("#", "");
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        return [
+          parseInt(h.substr(0, 2), 16) || 0,
+          parseInt(h.substr(2, 2), 16) || 0,
+          parseInt(h.substr(4, 2), 16) || 0,
+        ];
+      }
+      function setRuns(container: any, colorHex?: string, size?: number) {
+        var kind = container.GetClassType ? container.GetClassType() : "";
+        if (kind === "paragraph") {
+          var runs = container.GetElementsCount ? container.GetElementsCount() : 0;
+          for (var r = 0; r < runs; r++) {
+            var run = container.GetElement(r);
+            if (!run) continue;
+            if (colorHex && run.SetColor) run.SetColor(Api.HexColor(colorHex));
+            if (size && run.SetFontSize) run.SetFontSize(size);
+          }
+          return;
+        }
+        var n = container.GetElementsCount ? container.GetElementsCount() : 0;
+        for (var i = 0; i < n; i++) setRuns(container.GetElement(i), colorHex, size);
+      }
+
+      var doc = Api.GetDocument();
+      var tables = doc.GetAllTables();
+      var t = tables[tables.length - 1];
+      var cell = t.GetCell(0, 0);
+      var ac = hexRgb(String(scope.accent || "#1B4965"));
+      var li = hexRgb("#E4EEF6");
+      cell.SetShd("clear", li[0], li[1], li[2]);
+      cell.SetCellMarginTop(180);
+      cell.SetCellMarginBottom(180);
+      cell.SetCellMarginLeft(240);
+      cell.SetCellMarginRight(200);
+      cell.SetCellBorderLeft("single", 30, 0, ac[0], ac[1], ac[2]);
+      setRuns(cell.GetContent(), "#20303C", 11);
+      return true;
+    }, { accent });
+  };
+
+  // Adds (or replaces) a small header line that repeats on every page.
+  // Adds (or replaces) the running header. `text` may contain newlines to
+  // build a multi-line letterhead; the first line is bold by default.
+  setHeader = async (text: string, align?: string, boldFirst?: boolean) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var sections =
+        typeof doc.GetSections === "function" ? doc.GetSections() : null;
+      if (!sections || !sections.length) return false;
+      var section = sections[0];
+      if (typeof section.GetHeader !== "function") return false;
+      var header = section.GetHeader("default", true);
+      if (!header) return false;
+
+      // A header always keeps at least one paragraph, so trim to a single base
+      // paragraph, reuse it for the first line, then append the rest.
+      var guard = 0;
+      while (
+        typeof header.RemoveElement === "function" &&
+        typeof header.GetElementsCount === "function" &&
+        header.GetElementsCount() > 1 &&
+        guard < 100
+      ) {
+        header.RemoveElement(header.GetElementsCount() - 1);
+        guard++;
+      }
+
+      var lines = String(scope.text || "").split(/\r?\n/);
+      var jc =
+        scope.align === "center"
+          ? "center"
+          : scope.align === "right"
+            ? "right"
+            : "left";
+      var bold = scope.boldFirst !== false;
+      var first =
+        typeof header.GetElementsCount === "function" &&
+        header.GetElementsCount() >= 1
+          ? header.GetElement(0)
+          : null;
+      if (!first) {
+        first = Api.CreateParagraph();
+        header.Push(first);
+      }
+
+      var added = 0;
+      for (var i = 0; i < lines.length; i++) {
+        var p = i === 0 ? first : Api.CreateParagraph();
+        if (typeof p.SetText === "function") p.SetText(lines[i]);
+        else p.AddText(lines[i]);
+        if (p.SetJc) p.SetJc(jc);
+        var runs = p.GetElementsCount ? p.GetElementsCount() : 0;
+        for (var r = 0; r < runs; r++) {
+          var run = p.GetElement(r);
+          if (run && run.SetColor) {
+            run.SetColor(Api.HexColor("#5A6B7B"));
+            run.SetFontSize(bold && i === 0 ? 9 : 8);
+            if (bold && i === 0 && run.SetBold) run.SetBold(true);
+          }
+        }
+        if (i > 0) header.Push(p);
+        added++;
+      }
+      return added > 0;
+    }, { text, align, boldFirst });
+
+  // Rebuilds every table-of-contents field from the current headings.
+  updateTableOfContents = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      return typeof doc.UpdateAllTOC === "function"
+        ? doc.UpdateAllTOC(false)
+        : false;
+    });
 
   // Fits the target table to the page width or to its contents, optionally
   // centering it. tableIndex defaults to the last table.
@@ -570,11 +1305,279 @@ export class EditorDocumentTool {
       return names;
     });
 
-  snapshotPage = async (page: number) =>
-    this.callMethod("GetPageImage", [
-      page,
-      { maxSize: 1200, annotations: true, fields: true },
-    ]);
+  // Compact, bounded structural view of the document for self-review: one line
+  // per paragraph (index + style + short text) and table shapes. Cheaper and
+  // more reliable than re-reading the whole HTML.
+  getDocumentOutline = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var total =
+        typeof doc.GetElementsCount === "function" ? doc.GetElementsCount() : 0;
+      var items = [];
+      var headings = 0;
+      var words = 0;
+
+      for (var i = 0; i < total; i++) {
+        var el = doc.GetElement(i);
+        if (!el) continue;
+        var cls = typeof el.GetClassType === "function" ? el.GetClassType() : "";
+        var st = typeof el.GetStyle === "function" ? el.GetStyle() : null;
+        var style = st && typeof st.GetName === "function" ? st.GetName() : "";
+        var text =
+          typeof el.GetText === "function"
+            ? String(el.GetText()).replace(/[\r\n\t]+/g, " ").trim()
+            : "";
+
+        if (cls === "table") {
+          var rows = typeof el.GetRowsCount === "function" ? el.GetRowsCount() : -1;
+          var cells = typeof el.GetCellsCount === "function" ? el.GetCellsCount() : -1;
+          items.push({
+            i: i,
+            type: "table",
+            rows: rows,
+            cells: cells,
+            text: text.slice(0, 90),
+          });
+          continue;
+        }
+
+        if (style && /^(Title|Heading [1-9])$/.test(style)) headings++;
+        words += text ? text.split(/\s+/).length : 0;
+        items.push({
+          i: i,
+          style: style || "Normal",
+          text: text.slice(0, 90),
+        });
+      }
+
+      return JSON.stringify({
+        paragraphs: total,
+        headings: headings,
+        tables: typeof doc.GetAllTables === "function" ? doc.GetAllTables().length : -1,
+        images: typeof doc.GetAllImages === "function" ? doc.GetAllImages().length : -1,
+        charts: typeof doc.GetAllCharts === "function" ? doc.GetAllCharts().length : -1,
+        words: words,
+        outline: items,
+      });
+    });
+
+  // Builds the agent feedback snapshot: structure, provenance and findings.
+  // See docs/agent-doc-snapshot.md. Geometry is a later phase.
+  getAgentSnapshot = async () => {
+    const raw = await this.callEditorCommand(function () {
+      function hexOf(c: any) {
+        if (!c) return null;
+        var r: number | undefined;
+        var g: number | undefined;
+        var b: number | undefined;
+        if (typeof c.GetRGB === "function") {
+          var o = c.GetRGB();
+          if (o) {
+            r = o.r;
+            g = o.g;
+            b = o.b;
+          }
+        } else if (typeof c.value === "number") {
+          var v = c.value;
+          r = (v >> 16) & 255;
+          g = (v >> 8) & 255;
+          b = v & 255;
+        }
+        if (r === undefined || g === undefined || b === undefined) return null;
+        function h2(x: number) {
+          var s = x.toString(16);
+          return s.length < 2 ? "0" + s : s;
+        }
+        return "#" + h2(r) + h2(g) + h2(b);
+      }
+
+      var doc = Api.GetDocument();
+      var styleCache: Record<string, any> = {};
+      function styleInfo(name: string) {
+        if (styleCache[name]) return styleCache[name];
+        var s = doc.GetStyle ? doc.GetStyle(name) : null;
+        var tp = s && s.GetTextPr ? s.GetTextPr() : null;
+        var info = {
+          font: tp && tp.GetFontFamily ? tp.GetFontFamily("ascii") : null,
+          size: tp && tp.GetFontSize ? tp.GetFontSize() : null,
+          color: tp && tp.GetColor ? hexOf(tp.GetColor()) : null,
+        };
+        styleCache[name] = info;
+        return info;
+      }
+
+      var elements: any[] = [];
+      var stylesUsed: Record<string, boolean> = {};
+      var n = doc.GetElementsCount ? doc.GetElementsCount() : 0;
+
+      for (var i = 0; i < n; i++) {
+        var el = doc.GetElement(i);
+        if (!el) continue;
+        var cls = el.GetClassType ? el.GetClassType() : "";
+
+        if (cls === "table") {
+          var rows = el.GetRowsCount ? el.GetRowsCount() : 0;
+          var cols = 0;
+          try {
+            cols =
+              el.GetRow(0) && el.GetRow(0).GetCellsCount
+                ? el.GetRow(0).GetCellsCount()
+                : 0;
+          } catch (e) {
+            cols = 0;
+          }
+          var headerShaded = false;
+          try {
+            var boldCells = 0;
+            for (var c = 0; c < cols; c++) {
+              var cell = el.GetCell(0, c);
+              var cont = cell && cell.GetContent ? cell.GetContent() : null;
+              var pc =
+                cont && cont.GetElementsCount ? cont.GetElementsCount() : 0;
+              var bold = false;
+              for (var pi = 0; pi < pc; pi++) {
+                var para = cont.GetElement(pi);
+                var rc =
+                  para && para.GetElementsCount ? para.GetElementsCount() : 0;
+                for (var ri = 0; ri < rc; ri++) {
+                  var rn = para.GetElement(ri);
+                  if (rn && rn.GetBold && rn.GetBold()) bold = true;
+                }
+              }
+              if (bold) boldCells++;
+            }
+            headerShaded = cols > 0 && boldCells >= cols;
+          } catch (e) {
+            headerShaded = false;
+          }
+          elements.push({
+            kind: "table",
+            index: i,
+            rows: rows,
+            cols: cols,
+            headerShaded: headerShaded,
+            caption: null,
+          });
+          continue;
+        }
+
+        if (cls === "blockLvlSdt") {
+          elements.push({ kind: "toc", index: i });
+          continue;
+        }
+
+        if (cls === "image" || cls === "drawing") {
+          elements.push({ kind: "image", index: i, caption: null });
+          continue;
+        }
+
+        var st = el.GetStyle ? el.GetStyle() : null;
+        var style = st && st.GetName ? st.GetName() : "";
+        if (!style) style = "Normal";
+        stylesUsed[style] = true;
+        var text = el.GetText
+          ? String(el.GetText()).replace(/[\r\n\t]+/g, " ").trim()
+          : "";
+        var numbering = false;
+        try {
+          numbering = !!(el.GetNumbering && el.GetNumbering());
+        } catch (e) {
+          numbering = false;
+        }
+
+        var si = styleInfo(style);
+        var runs: any[] = [];
+        var rcount = el.GetElementsCount ? el.GetElementsCount() : 0;
+        for (var k = 0; k < rcount; k++) {
+          var run = el.GetElement(k);
+          if (!run || !run.GetClassType || run.GetClassType() !== "run")
+            continue;
+          var font = run.GetFontFamily ? run.GetFontFamily("ascii") : null;
+          var size = run.GetFontSize ? run.GetFontSize() : null;
+          var color = run.GetColor ? hexOf(run.GetColor()) : null;
+          var direct = false;
+          if (font && si.font && font !== si.font) direct = true;
+          if (size && si.size && Number(size) !== Number(si.size)) direct = true;
+          if (color && si.color && color !== si.color) direct = true;
+          runs.push({
+            text: run.GetText ? String(run.GetText()) : "",
+            font: font,
+            size: size,
+            color: color,
+            bold: run.GetBold ? !!run.GetBold() : undefined,
+            italic: run.GetItalic ? !!run.GetItalic() : undefined,
+            direct: direct,
+          });
+        }
+        elements.push({
+          kind: "paragraph",
+          index: i,
+          style: style,
+          text: text,
+          numbering: numbering,
+          runs: runs,
+        });
+      }
+
+      // Attach captions: a following paragraph starting with "Table N."/"Figure N.".
+      for (var j = 0; j < elements.length - 1; j++) {
+        var cur = elements[j];
+        var nx = elements[j + 1];
+        if (
+          (cur.kind === "table" || cur.kind === "image") &&
+          nx.kind === "paragraph" &&
+          /^(Table|Figure)\s+\d+\./i.test(nx.text)
+        ) {
+          cur.caption = nx.text;
+        }
+      }
+
+      var stylesDefined: string[] = [];
+      try {
+        var all = doc.GetAllStyles ? doc.GetAllStyles() : {};
+        for (var key in all) {
+          if (Object.prototype.hasOwnProperty.call(all, key)) {
+            stylesDefined.push(all[key].GetName ? all[key].GetName() : key);
+          }
+        }
+      } catch (e) {
+        stylesDefined = [];
+      }
+
+      return JSON.stringify({
+        elements: elements,
+        stylesDefined: stylesDefined,
+        stylesUsed: Object.keys(stylesUsed),
+      });
+    });
+
+    let model: DocModel;
+    try {
+      model =
+        typeof raw === "string" ? (JSON.parse(raw) as DocModel) : (raw as DocModel);
+    } catch {
+      return JSON.stringify({
+        schema: "tysastra.agent.doc/1.0",
+        error: "snapshot failed",
+      });
+    }
+
+    const findings = computeFindings(model);
+    return JSON.stringify({
+      schema: "tysastra.agent.doc/1.0",
+      coverage: {
+        pagination: "absent",
+        text_geometry: "absent",
+        resolved_typography: "partial",
+        table_geometry: "partial",
+        drawing_appearance: "absent",
+        header_footer: "absent",
+      },
+      summary: summarizeFindings(findings),
+      findings,
+      nodes: (model.elements ?? []).slice(0, 200) as DocElement[],
+    });
+  };
 
   getTools = (): TMCPItem[] => {
     if (!this.isAvailable()) return [];
@@ -715,7 +1718,7 @@ export class EditorDocumentTool {
       {
         name: "apply_document_theme",
         description:
-          "Give the document a consistent visual design by setting the accent color (and optional font) of the Title and Heading styles. Call this at the START of building a document, before inserting content, so headings inherit the design. Example accent: #1F3864.",
+          "Give the document a consistent visual design by setting the accent color (and optional font) of the Title and Heading 1-9 styles. Call this at the START of building a document, before inserting content, so headings inherit the design. Editing the named styles means the author can keep writing and get the same look. Example accent: #1F3864.",
         inputSchema: {
           type: "object",
           properties: {
@@ -726,9 +1729,83 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "setup_document",
+        description:
+          "PREFERRED start-of-document call (replaces apply_document_theme + set_page_margins + add_page_numbers): sets the accent color on the named styles (Title, Subtitle, Heading 1-9), sets page margins, and adds footer page numbers in ONE call. Use it once before inserting content.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            accent: { type: "string", description: "Hex color, e.g. #1F3864" },
+            fontFamily: { type: "string" },
+            marginsPt: { type: "number", description: "Margin in points, e.g. 56" },
+          },
+          required: ["accent"],
+        },
+      },
+      {
+        name: "insert_title",
+        description:
+          "Insert the document title block using the real Title/Subtitle styles (title, optional subtitle, optional author/date line). Use this for the document title instead of an <h1>, so the title is NOT counted as heading 1 and is not numbered.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            meta: { type: "string", description: "Author / organisation / date line." },
+          },
+          required: ["title"],
+        },
+      },
+      {
+        name: "insert_banner",
+        description:
+          "Insert a full-width shaded title banner (a designed cover) with a large white title, a subtitle and an optional meta line below (author/date/reference). Use it for a polished first page instead of a plain heading.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            subtitle: { type: "string" },
+            meta: { type: "string" },
+            accent: { type: "string", description: "Hex color, e.g. #1B4965" },
+          },
+          required: ["title"],
+        },
+      },
+      {
+        name: "insert_callout",
+        description:
+          "Insert a shaded callout box with a thick accent bar on the left, for a key insight, note or recommendation. Text may include simple HTML such as <strong>Key insight:</strong> ...",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            accent: { type: "string", description: "Hex color, e.g. #1B4965" },
+          },
+          required: ["text"],
+        },
+      },
+      {
+        name: "number_headings",
+        description:
+          "Turn on automatic section numbering for headings (1, 1.1, 1.1.1). Numbers are generated by the editor and stay correct when headings are added, moved or deleted, so do NOT type numbers into heading text. Call once after the headings exist.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "add_page_numbers",
+        description:
+          "Add a centered 'Page X of Y' number field to the document footer. Call this for every document you produce.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "insert_table_of_contents",
         description:
-          "Insert a DYNAMIC table of contents (built from the document's Heading styles, with page numbers and links). Insert it after the title block once the headings exist. Requires content to use real headings (h1/h2/h3).",
+          "Insert a DYNAMIC table of contents (built from the document's Heading styles, with page numbers and links). Insert it after the title block once the headings exist. Requires content to use real headings (h1/h2/h3). If you inserted it too early, call update_table_of_contents to fill it.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "update_table_of_contents",
+        description:
+          "Rebuild/refresh every table of contents in the document from the current headings (use after editing headings if the TOC looks empty or out of date).",
         inputSchema: { type: "object", properties: {} },
       },
       {
@@ -750,7 +1827,7 @@ export class EditorDocumentTool {
       {
         name: "insert_image",
         description:
-          "Insert an image (URL or data URI) as its own paragraph. Provide width/height in points and an alignment.",
+          "Insert an image (URL or data URI) as its own paragraph. Provide width/height in points and an alignment. Note: remote URLs may fail to load; for data visuals prefer insert_chart.",
         inputSchema: {
           type: "object",
           properties: {
@@ -763,6 +1840,30 @@ export class EditorDocumentTool {
             },
           },
           required: ["src", "width", "height"],
+        },
+      },
+      {
+        name: "insert_chart",
+        description:
+          "Insert a real, editable chart (a plot) with a title. Use this for any data visualisation. chartType: bar | line | pie | area | scatter. series is an array of numeric arrays (one per series); seriesNames and catNames are the labels.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            chartType: {
+              type: "string",
+              enum: ["bar", "line", "pie", "area", "scatter"],
+            },
+            series: {
+              type: "array",
+              items: { type: "array", items: { type: "number" } },
+            },
+            seriesNames: { type: "array", items: { type: "string" } },
+            catNames: { type: "array", items: { type: "string" } },
+            title: { type: "string" },
+            width: { type: "number" },
+            height: { type: "number" },
+          },
+          required: ["chartType", "series", "seriesNames", "catNames"],
         },
       },
       {
@@ -780,6 +1881,40 @@ export class EditorDocumentTool {
             },
           },
           required: ["mode"],
+        },
+      },
+      {
+        name: "style_table",
+        description:
+          "Apply a design to a table (defaults to the last table): a shaded header row with contrasting text, optional banded rows and bottom borders. Call it once per table after inserting the table. Defaults: headerFill #1B4965, headerTextColor #FFFFFF, bandRows true, borders true.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            tableIndex: {
+              type: "number",
+              description: "0-based table index; defaults to the last table.",
+            },
+            headerFill: { type: "string", description: "Hex color of the header row." },
+            headerTextColor: { type: "string", description: "Hex text color for the header row." },
+            bandFill: { type: "string", description: "Hex color for the shaded (even) rows." },
+            bandRows: { type: "boolean" },
+            borders: { type: "boolean" },
+            columnWidths: {
+              type: "array",
+              items: { type: "number" },
+              description:
+                "Optional per-column widths as percentages (e.g. [6,44,8,8,17,17]) so narrow columns stay readable.",
+            },
+            emphasizeLastRows: {
+              type: "number",
+              description:
+                "Shade and bold the last N rows (e.g. 3 for Total/VAT/Grand Total).",
+            },
+            totalFill: {
+              type: "string",
+              description: "Hex fill for the emphasized rows (default #D6E4F0).",
+            },
+          },
         },
       },
       {
@@ -821,6 +1956,20 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "set_header",
+        description:
+          "Set the running header that repeats on every page. `text` may contain newlines to build a multi-line letterhead (company name, address, contact); the first line is bold by default. Replaces any existing header.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "Header text; use \\n for multiple lines." },
+            align: { type: "string", enum: ["left", "center", "right"] },
+            boldFirst: { type: "boolean", description: "Bold the first line (default true)." },
+          },
+          required: ["text"],
+        },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -832,13 +1981,16 @@ export class EditorDocumentTool {
         inputSchema: { type: "object", properties: {} },
       },
       {
-        name: "snapshot_page",
+        name: "get_document_feedback",
         description:
-          "Return a PNG snapshot (data URL) of a page. Works for PDF documents.",
-        inputSchema: {
-          type: "object",
-          properties: { page: { type: "number" } },
-        },
+          "Return the document feedback snapshot: structure + style provenance + source-linked findings (schema tysastra.agent.doc). USE THIS to verify your work: each finding has a code, severity (blocking|advisory), a nodeId and a message. Fix every blocking finding by its nodeId, then call it again. Phase 0 covers structure/provenance findings (double numbering, direct-format override, empty section, missing caption, missing TOC); geometry findings come later.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "get_document_outline",
+        description:
+          "Return a compact, bounded structural outline of the document (paragraph index, style, short text, table shape, counts). USE THIS for self-review instead of get_document_html: it is smaller, complete, and reliable.",
+        inputSchema: { type: "object", properties: {} },
       },
       {
         name: "find_and_replace",
@@ -937,8 +2089,45 @@ export class EditorDocumentTool {
           args.fontFamily ? String(args.fontFamily) : undefined
         );
         break;
+      case "setup_document":
+        result = await this.setupDocument(
+          String(args.accent ?? ""),
+          args.fontFamily ? String(args.fontFamily) : undefined,
+          typeof args.marginsPt === "number" ? args.marginsPt : undefined
+        );
+        break;
+      case "insert_title":
+        result = await this.insertTitle(
+          String(args.title ?? ""),
+          String(args.subtitle ?? ""),
+          String(args.meta ?? "")
+        );
+        break;
+      case "insert_banner":
+        result = await this.insertBanner(
+          String(args.title ?? ""),
+          String(args.subtitle ?? ""),
+          String(args.meta ?? ""),
+          String(args.accent ?? "")
+        );
+        break;
+      case "insert_callout":
+        result = await this.insertCallout(
+          String(args.text ?? ""),
+          String(args.accent ?? "")
+        );
+        break;
+      case "number_headings":
+        result = await this.numberHeadings();
+        break;
+      case "add_page_numbers":
+        result = await this.addPageNumbers();
+        break;
       case "insert_table_of_contents":
         result = await this.insertTableOfContents();
+        break;
+      case "update_table_of_contents":
+        result = await this.updateTableOfContents();
         break;
       case "add_caption":
         result = await this.addCaption(
@@ -954,12 +2143,44 @@ export class EditorDocumentTool {
           String(args.align ?? "center")
         );
         break;
+      case "insert_chart":
+        result = await this.insertChart(
+          String(args.chartType ?? "bar"),
+          Array.isArray(args.series) ? (args.series as number[][]) : [],
+          Array.isArray(args.seriesNames) ? (args.seriesNames as string[]) : [],
+          Array.isArray(args.catNames) ? (args.catNames as string[]) : [],
+          String(args.title ?? ""),
+          Number(args.width ?? 420),
+          Number(args.height ?? 260)
+        );
+        break;
       case "fit_table":
         result = await this.fitTable(
           String(args.mode ?? "contents"),
           Boolean(args.center),
           typeof args.tableIndex === "number" ? args.tableIndex : undefined
         );
+        break;
+      case "style_table":
+        result = await this.styleTable({
+          tableIndex:
+            typeof args.tableIndex === "number" ? args.tableIndex : undefined,
+          headerFill: args.headerFill ? String(args.headerFill) : undefined,
+          headerTextColor: args.headerTextColor
+            ? String(args.headerTextColor)
+            : undefined,
+          bandFill: args.bandFill ? String(args.bandFill) : undefined,
+          bandRows: typeof args.bandRows === "boolean" ? args.bandRows : undefined,
+          borders: typeof args.borders === "boolean" ? args.borders : undefined,
+          columnWidths: Array.isArray(args.columnWidths)
+            ? (args.columnWidths as number[])
+            : undefined,
+          emphasizeLastRows:
+            typeof args.emphasizeLastRows === "number"
+              ? args.emphasizeLastRows
+              : undefined,
+          totalFill: args.totalFill ? String(args.totalFill) : undefined,
+        });
         break;
       case "set_paragraph_spacing":
         result = await this.setParagraphSpacing(
@@ -977,6 +2198,13 @@ export class EditorDocumentTool {
           Number(args.top ?? 56),
           Number(args.right ?? 56),
           Number(args.bottom ?? 56)
+        );
+        break;
+      case "set_header":
+        result = await this.setHeader(
+          String(args.text ?? ""),
+          args.align ? String(args.align) : undefined,
+          typeof args.boldFirst === "boolean" ? args.boldFirst : undefined
         );
         break;
       case "find_and_replace":
@@ -1004,8 +2232,11 @@ export class EditorDocumentTool {
       case "get_styles":
         result = await this.getStyles();
         break;
-      case "snapshot_page":
-        result = await this.snapshotPage(Number(args.page ?? 0));
+      case "get_document_outline":
+        result = await this.getDocumentOutline();
+        break;
+      case "get_document_feedback":
+        result = await this.getAgentSnapshot();
         break;
       default:
         result = { error: `unknown editor tool: ${name}` };
