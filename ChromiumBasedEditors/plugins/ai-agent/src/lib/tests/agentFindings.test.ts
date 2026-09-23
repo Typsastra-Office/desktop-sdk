@@ -136,6 +136,22 @@ describe("computeFindings", () => {
     expect(computeFindings(model).map((f) => f.code)).toContain("TOC_MISSING");
   });
 
+  it("flags HEADING_LEVEL_SKIP when heading levels jump", () => {
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      elements: [
+        heading(0, "One", true, "Heading 1"),
+        body(1, "a"),
+        heading(2, "Deep", true, "Heading 3"),
+        body(3, "b"),
+      ],
+    };
+    expect(computeFindings(model).map((f) => f.code)).toContain(
+      "HEADING_LEVEL_SKIP"
+    );
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],

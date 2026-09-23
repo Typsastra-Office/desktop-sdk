@@ -71,6 +71,7 @@ offending node so the agent can act on it directly.
 | `DIRECT_FORMAT_OVERRIDE` | advisory | run formatting differs from the named style |
 | `MISSING_CAPTION` | advisory | a table or image has no caption |
 | `TOC_MISSING` | advisory | several headings but no table of contents |
+| `HEADING_LEVEL_SKIP` | advisory | heading levels jump (e.g. Heading 1 -> Heading 3) |
 | `STYLE_UNUSED` | advisory | a defined style that no content uses |
 
 Phase 1 adds geometry-based codes: `PAGE_OVERFLOW`, `COLUMN_OVERFLOW`,

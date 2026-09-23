@@ -144,6 +144,24 @@ export const computeFindings = (model: DocModel): Finding[] => {
     }
   }
 
+  // Heading levels should not skip (e.g. Heading 1 -> Heading 3).
+  let lastLevel = 0;
+  for (const e of els) {
+    if (e.kind !== "paragraph") continue;
+    const m = HEADING_RE.exec(e.style);
+    if (!m) continue;
+    const level = parseInt(m[1], 10);
+    if (lastLevel > 0 && level > lastLevel + 1) {
+      findings.push({
+        code: "HEADING_LEVEL_SKIP",
+        severity: "advisory",
+        nodeId: `paragraph:${e.index}`,
+        message: `Heading level jumps from ${lastLevel} to ${level}: "${e.text.slice(0, 50)}"`,
+      });
+    }
+    lastLevel = level;
+  }
+
   // Tables and images without a caption.
   for (const e of els) {
     if (e.kind !== "table" && e.kind !== "image") continue;

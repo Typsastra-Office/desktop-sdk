@@ -13,7 +13,9 @@ import { createErrorResponse } from "@/providers/openai/constants";
 import server from "@/servers";
 import useAttachmentsStore from "@/store/useAttachmentsStore";
 import useContextStore from "@/store/useContextStore";
-import useFeedbackStore from "@/store/useFeedbackStore";
+import useFeedbackStore, {
+  type DiffSummary,
+} from "@/store/useFeedbackStore";
 import useMessageStore from "@/store/useMessageStore";
 import useModelsStore from "@/store/useModelsStore";
 import useProviders from "@/store/useProviders";
@@ -249,6 +251,17 @@ const useMessages = ({ isReady }: UseMessagesProps) => {
       };
       const findings = Array.isArray(parsed?.findings) ? parsed.findings : [];
       useFeedbackStore.getState().setFindings(findings);
+
+      // Also refresh the change summary shown in the panel.
+      try {
+        const d = await server.callTools("editor", "get_document_diff", {});
+        const dt = typeof d === "string" ? d : JSON.stringify(d ?? "");
+        const parsedDiff = JSON.parse(dt) as { summary?: DiffSummary };
+        useFeedbackStore.getState().setDiff(parsedDiff?.summary);
+      } catch {
+        // no previous snapshot yet; ignore
+      }
+
       return findings;
     } catch {
       return [];

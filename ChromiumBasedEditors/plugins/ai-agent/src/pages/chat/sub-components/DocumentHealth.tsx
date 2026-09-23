@@ -13,6 +13,7 @@ const severityClass: Record<string, string> = {
  */
 export const DocumentHealth = () => {
   const findings = useFeedbackStore((s) => s.findings);
+  const diff = useFeedbackStore((s) => s.diff);
   if (!findings.length) return null;
 
   const blocking = findings.filter((f) => f.severity === "blocking").length;
@@ -31,6 +32,11 @@ export const DocumentHealth = () => {
           <span className="text-[11px] font-normal opacity-70">
             {blocking} blocking · {findings.length - blocking} advisory
           </span>
+          {diff ? (
+            <span className="text-[11px] font-normal opacity-70">
+              · {diff.clearedFindings} fixed · {diff.newFindings} new
+            </span>
+          ) : null}
         </div>
         <ul className="flex flex-col gap-1">
           {findings.map((f, i) => (
