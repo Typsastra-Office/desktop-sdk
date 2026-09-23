@@ -289,6 +289,138 @@ export class EditorDocumentTool {
       return changed;
     }, { script, font });
 
+  // Inserts a dynamic table of contents (built from the document heading
+  // styles, with page numbers and hyperlinks).
+  insertTableOfContents = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      if (typeof doc.AddTableOfContents !== "function") return false;
+      doc.AddTableOfContents({
+        ShowPageNums: true,
+        RightAlgn: true,
+        FormatAsLinks: true,
+        LeaderType: "dot",
+        BuildFrom: { OutlineLvls: 9 },
+      });
+      return true;
+    });
+
+  // Adds a caption (e.g. "Table 1", "Figure 2") to the paragraph at the cursor.
+  addCaption = async (text: string, label: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (!p || typeof p.AddCaption !== "function") return false;
+      return p.AddCaption(scope.text || "", scope.label || "Table", false) !== false;
+    }, { text, label });
+
+  // Inserts an image (URL or base64) as its own paragraph, optionally centered.
+  insertImage = async (
+    src: string,
+    width: number,
+    height: number,
+    align: string
+  ) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var image = Api.CreateImage(scope.src, scope.width, scope.height);
+      var p = Api.CreateParagraph();
+      if (typeof p.AddDrawing === "function") p.AddDrawing(image);
+      if (scope.align && typeof p.SetJc === "function") p.SetJc(scope.align);
+      doc.InsertContent([p]);
+      return true;
+    }, { src, width, height, align: align === "justify" ? "center" : align });
+
+  // Fits the target table to the page width or to its contents, optionally
+  // centering it. tableIndex defaults to the last table.
+  fitTable = async (mode: string, center: boolean, tableIndex?: number) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var tables =
+        typeof doc.GetAllTables === "function" ? doc.GetAllTables() : [];
+      if (!tables || !tables.length) return false;
+      var idx =
+        typeof scope.tableIndex === "number"
+          ? scope.tableIndex
+          : tables.length - 1;
+      var table = tables[idx];
+      if (!table) return false;
+
+      if (scope.mode === "page") {
+        if (typeof table.SetWidth === "function") table.SetWidth("percent", 100);
+        if (typeof table.SetTableLayout === "function")
+          table.SetTableLayout("autofit");
+      } else if (scope.mode === "contents") {
+        if (typeof table.SetTableLayout === "function")
+          table.SetTableLayout("autofit");
+      }
+      if (scope.center && typeof table.SetJc === "function")
+        table.SetJc("center");
+      return true;
+    }, { mode, center, tableIndex });
+
+  // Sets paragraph spacing (before/after in points, line spacing multiplier).
+  setParagraphSpacing = async (
+    before?: number,
+    after?: number,
+    line?: number
+  ) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (!p) return false;
+      if (typeof scope.before === "number" && p.SetSpacingBefore)
+        p.SetSpacingBefore(scope.before);
+      if (typeof scope.after === "number" && p.SetSpacingAfter)
+        p.SetSpacingAfter(scope.after);
+      if (typeof scope.line === "number" && p.SetSpacing)
+        p.SetSpacing(scope.line);
+      return true;
+    }, { before, after, line });
+
+  // Keeps the current paragraph with the next one (and keeps its lines
+  // together) so headings are not orphaned at the bottom of a page.
+  keepWithNext = async (enabled: boolean) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (!p || typeof p.SetKeepNext !== "function") return false;
+      p.SetKeepNext(!!scope.enabled);
+      if (typeof p.SetKeepLines === "function") p.SetKeepLines(!!scope.enabled);
+      return true;
+    }, { enabled });
+
+  // Sets the page margins (in points) for the document.
+  setPageMargins = async (
+    left: number,
+    top: number,
+    right: number,
+    bottom: number
+  ) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var sections =
+        typeof doc.GetSections === "function" ? doc.GetSections() : null;
+      var section =
+        sections && sections.length
+          ? sections[0]
+          : typeof doc.GetFinalSection === "function"
+            ? doc.GetFinalSection()
+            : null;
+      if (!section || typeof section.SetPageMargins !== "function") return false;
+      section.SetPageMargins(scope.left, scope.top, scope.right, scope.bottom);
+      return true;
+    }, { left, top, right, bottom });
+
   getDocumentText = async () =>
     this.callEditorCommand(function () {
       return Api.GetDocument().GetText();
@@ -462,6 +594,101 @@ export class EditorDocumentTool {
         },
       },
       {
+        name: "insert_table_of_contents",
+        description:
+          "Insert a DYNAMIC table of contents (built from the document's Heading styles, with page numbers and links). Insert it after the title block once the headings exist. Requires content to use real headings (h1/h2/h3).",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
+        name: "add_caption",
+        description:
+          'Add a numbered caption (e.g. "Table 3", "Figure 1") to the paragraph at the cursor - use it under tables and images.',
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string", description: "Caption text." },
+            label: {
+              type: "string",
+              description: 'Caption label, e.g. "Table" or "Figure".',
+            },
+          },
+          required: ["text", "label"],
+        },
+      },
+      {
+        name: "insert_image",
+        description:
+          "Insert an image (URL or data URI) as its own paragraph. Provide width/height in points and an alignment.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            src: { type: "string" },
+            width: { type: "number" },
+            height: { type: "number" },
+            align: {
+              type: "string",
+              enum: ["left", "center", "right"],
+            },
+          },
+          required: ["src", "width", "height"],
+        },
+      },
+      {
+        name: "fit_table",
+        description:
+          'Adjust a table to the page: mode "page" stretches it to the full page width (use for wide data tables), mode "contents" shrinks it to fit its contents (use for small tables). Set center=true to center it.',
+        inputSchema: {
+          type: "object",
+          properties: {
+            mode: { type: "string", enum: ["page", "contents"] },
+            center: { type: "boolean" },
+            tableIndex: {
+              type: "number",
+              description: "0-based table index; defaults to the last table.",
+            },
+          },
+          required: ["mode"],
+        },
+      },
+      {
+        name: "set_paragraph_spacing",
+        description:
+          "Set spacing for the paragraph at the cursor: before/after in points and line spacing multiplier. Use consistent spacing instead of blank paragraphs to control empty space.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            before: { type: "number" },
+            after: { type: "number" },
+            line: { type: "number" },
+          },
+        },
+      },
+      {
+        name: "keep_with_next",
+        description:
+          "Keep the paragraph at the cursor with the following paragraph (and keep its lines together). Use on headings and captions so they are not orphaned at the bottom of a page.",
+        inputSchema: {
+          type: "object",
+          properties: { enabled: { type: "boolean" } },
+          required: ["enabled"],
+        },
+      },
+      {
+        name: "set_page_margins",
+        description:
+          "Set the page margins in points (left, top, right, bottom) for the document.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            left: { type: "number" },
+            top: { type: "number" },
+            right: { type: "number" },
+            bottom: { type: "number" },
+          },
+          required: ["left", "top", "right", "bottom"],
+        },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -536,6 +763,48 @@ export class EditorDocumentTool {
         result = await this.applyTheme(
           String(args.accent ?? ""),
           args.fontFamily ? String(args.fontFamily) : undefined
+        );
+        break;
+      case "insert_table_of_contents":
+        result = await this.insertTableOfContents();
+        break;
+      case "add_caption":
+        result = await this.addCaption(
+          String(args.text ?? ""),
+          String(args.label ?? "Table")
+        );
+        break;
+      case "insert_image":
+        result = await this.insertImage(
+          String(args.src ?? ""),
+          Number(args.width ?? 400),
+          Number(args.height ?? 300),
+          String(args.align ?? "center")
+        );
+        break;
+      case "fit_table":
+        result = await this.fitTable(
+          String(args.mode ?? "contents"),
+          Boolean(args.center),
+          typeof args.tableIndex === "number" ? args.tableIndex : undefined
+        );
+        break;
+      case "set_paragraph_spacing":
+        result = await this.setParagraphSpacing(
+          typeof args.before === "number" ? args.before : undefined,
+          typeof args.after === "number" ? args.after : undefined,
+          typeof args.line === "number" ? args.line : undefined
+        );
+        break;
+      case "keep_with_next":
+        result = await this.keepWithNext(Boolean(args.enabled));
+        break;
+      case "set_page_margins":
+        result = await this.setPageMargins(
+          Number(args.left ?? 56),
+          Number(args.top ?? 56),
+          Number(args.right ?? 56),
+          Number(args.bottom ?? 56)
         );
         break;
       case "get_document_text":

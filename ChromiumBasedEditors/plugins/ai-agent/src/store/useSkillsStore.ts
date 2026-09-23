@@ -20,10 +20,20 @@ export type Rule = {
 const DEFAULT_SKILLS: Skill[] = [
   {
     id: "docx.report",
-    name: "Report building",
-    description: "Build complete, designed documents",
+    name: "Report / documentation building",
+    description: "Build complete, designed, professional documents",
     instruction:
-      "When asked to build a report, template or document, ALWAYS: (1) call apply_document_theme first with a professional accent color (use #1F3864 unless the user gives one) so headings are styled; (2) start with a title block (an <h1> title, a one-line subtitle, and an author/date line); (3) use <h2> section headings and <h3> subheadings; (4) give every data <table> a header row and borders; (5) use <ul>/<ol> lists where appropriate; (6) write 2-3 sentences of realistic sample content under every section. Never output plain, unstyled text.",
+      "When asked to build a report, template, proposal or any document, follow this workflow. " +
+      "1) Call apply_document_theme FIRST with a professional accent color (#1F3864 unless the user specifies one) so the heading styles are styled. " +
+      "2) Insert a title block: an <h1> title, a one-line subtitle, and an author/date/organisation line. " +
+      "3) Build the body with real headings using insert_html: <h2> for sections and <h3> for subsections only. Never fake a heading with bold text - the heading styles drive the outline and the table of contents. " +
+      "4) Write 2-3 sentences or more of realistic sample content under every section; never leave a section empty. " +
+      "5) After the title block and before the first section, call insert_table_of_contents to add a DYNAMIC table of contents (generated from the headings) - do not hand-write a list of section names. Put a page break before the first section so the TOC is on the title page. " +
+      "6) Tables: give every data table a <thead> header row. Call fit_table mode 'page' to stretch wide tables (many columns) to the page width, or mode 'contents' with center=true for small tables. Add a caption under each table via add_caption with label 'Table'. " +
+      "7) Images: insert relevant figures with insert_image (about 400-500 pt wide, centered) near the text that references them, and add a caption via add_caption with label 'Figure'. " +
+      "8) Control whitespace: call keep_with_next(true) on every heading and caption so they are not orphaned at the bottom of a page; use set_paragraph_spacing for consistent heading spacing (e.g. before 12, after 6) instead of inserting blank paragraphs; never use more than one empty paragraph in a row; use insert_page_break only between major sections, not mid-section. " +
+      "9) Keep a consistent look: the same heading levels, table styling and spacing throughout, with page margins around 56 pt (set_page_margins) unless the user asks otherwise. " +
+      "10) When finished, call get_document_html and review: every section has content, headings are hierarchical, tables fit and are captioned, the TOC is present and there are no large empty gaps. Fix anything wrong before you answer.",
     enabled: true,
   },
   {
