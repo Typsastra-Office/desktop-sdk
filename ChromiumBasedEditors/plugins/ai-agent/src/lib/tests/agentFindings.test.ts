@@ -295,6 +295,35 @@ describe("computeFindings", () => {
     );
   });
 
+  it("flags WIDOW_LINE and ORPHAN_LINE for split paragraphs", () => {
+    const widow = body(0, "long");
+    widow.geometry = {
+      absPage: 0,
+      pagesCount: 2,
+      pageLines: [
+        { absPage: 0, lines: 40 },
+        { absPage: 1, lines: 1 },
+      ],
+    };
+    const orphan = body(1, "long");
+    orphan.geometry = {
+      absPage: 2,
+      pagesCount: 2,
+      pageLines: [
+        { absPage: 2, lines: 1 },
+        { absPage: 3, lines: 30 },
+      ],
+    };
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      elements: [widow, orphan],
+    };
+    const codes = computeFindings(model).map((f) => f.code);
+    expect(codes).toContain("WIDOW_LINE");
+    expect(codes).toContain("ORPHAN_LINE");
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],

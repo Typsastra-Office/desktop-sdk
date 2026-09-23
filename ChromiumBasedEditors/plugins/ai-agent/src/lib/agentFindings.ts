@@ -27,6 +27,11 @@ export type RunModel = {
   direct?: boolean;
 };
 
+export type PageLineInfo = {
+  absPage: number;
+  lines?: number;
+};
+
 export type ParagraphGeometry = {
   absPage: number;
   pagesCount?: number;
@@ -35,6 +40,7 @@ export type ParagraphGeometry = {
   bottom?: number;
   left?: number;
   right?: number;
+  pageLines?: PageLineInfo[];
 };
 
 export type TableGeometry = {
@@ -316,6 +322,33 @@ export const computeFindings = (model: DocModel): Finding[] => {
           message: `Footer extends into the body (${f.top.toFixed(1)}mm < ${limit.toFixed(1)}mm)`,
         });
       }
+    }
+  }
+
+  // Widow / orphan lines: a paragraph split across pages with a single line at
+  // the top (orphan) or bottom (widow) of a page (geometry, phase 1).
+  for (const e of els) {
+    if (e.kind !== "paragraph" || !e.geometry || !e.geometry.pageLines)
+      continue;
+    const pl = e.geometry.pageLines;
+    if (pl.length <= 1) continue;
+    const first = pl[0];
+    const last = pl[pl.length - 1];
+    if (last.lines === 1) {
+      findings.push({
+        code: "WIDOW_LINE",
+        severity: "advisory",
+        nodeId: nodeIdOf(e),
+        message: "Paragraph ends with a single line on the last page",
+      });
+    }
+    if (first.lines === 1) {
+      findings.push({
+        code: "ORPHAN_LINE",
+        severity: "advisory",
+        nodeId: nodeIdOf(e),
+        message: "Paragraph starts with a single line at the bottom of a page",
+      });
     }
   }
 

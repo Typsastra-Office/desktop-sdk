@@ -1614,6 +1614,9 @@ export class EditorDocumentTool {
               bottom: g.bottom === undefined ? undefined : Number(g.bottom),
               left: g.left === undefined ? undefined : Number(g.left),
               right: g.right === undefined ? undefined : Number(g.right),
+              pageLines: Array.isArray(g.pageLines)
+                ? (g.pageLines as Array<{ absPage: number; lines?: number }>)
+                : undefined,
             };
             geometryAvailable = true;
           }

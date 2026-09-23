@@ -79,6 +79,7 @@ offending node so the agent can act on it directly.
 | `PAGE_OVERFLOW` | advisory | content extends past the bottom of the text area |
 | `HEADER_OVERLAP` / `FOOTER_OVERLAP` | advisory | header/footer extends into the body |
 | `HEADER_CLIPPED` | advisory | header starts above the page top |
+| `WIDOW_LINE` / `ORPHAN_LINE` | advisory | a split paragraph leaves a single line on a page |
 | `STYLE_UNUSED` | advisory | a defined style that no content uses |
 
 Phase 1 adds geometry: paragraphs may carry
