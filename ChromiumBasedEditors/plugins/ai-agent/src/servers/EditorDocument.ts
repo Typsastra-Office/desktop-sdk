@@ -39,13 +39,20 @@ const getPlugin = (): AscPlugin | undefined => {
     : undefined;
 };
 
+// The plugin object exists as soon as plugins.js loads, but executeMethod is
+// only defined after the editor host completes the init handshake. Report the
+// editor as available based on the plugin object so the tool list is correct
+// from the first request; calls made before init simply return an error.
+const isPluginPresent = (): boolean =>
+  Boolean((window as unknown as AscHost).Asc?.plugin);
+
 /**
  * Bridge that lets the agent read and modify the document that is currently
  * open in the editor. Available only when the plugin runs inside an editor
  * frame (i.e. `window.Asc.plugin` was initialized by the editor host).
  */
 export class EditorDocumentTool {
-  isAvailable = (): boolean => !!getPlugin();
+  isAvailable = (): boolean => isPluginPresent();
 
   private callMethod = (
     name: string,

@@ -65,20 +65,20 @@ class Servers {
       this.customServers.getTools(),
     ]);
 
-    const fileGeneratorTools = [
+    // The agent must never create or open documents - it only edits the
+    // document that is currently active in the editor.
+    const hiddenTools = [
       "generate_docx",
       "generate_form",
       "generate_pptx",
+      "file_opener",
+      "form_field_filler",
     ];
 
     const items: Record<string, TMCPItem[]> = {
-      // When the editor bridge is available the agent must edit the open
-      // document in place, so the "create a new file" generators are hidden.
-      "desktop-editor": editorDocumentTools.length
-        ? desktopEditorTools.filter(
-            (tool) => !fileGeneratorTools.includes(tool.name)
-          )
-        : desktopEditorTools,
+      "desktop-editor": desktopEditorTools.filter(
+        (tool) => !hiddenTools.includes(tool.name)
+      ),
       "web-search": webSearchTools,
       ...customServersTools,
     };
