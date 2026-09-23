@@ -29,6 +29,12 @@ class Servers {
       return true;
     }
 
+    // In-document editing tools are internal and safe: reading and editing the
+    // active document should not require per-call approval.
+    if (type === "editor") {
+      return true;
+    }
+
     if (this.allowAlways.includes(`${type}_${name}`)) {
       return true;
     }

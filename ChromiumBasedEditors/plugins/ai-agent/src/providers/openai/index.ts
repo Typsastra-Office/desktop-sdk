@@ -38,6 +38,32 @@ class OpenAIProvider extends AbstractBaseProvider<
   // Abort controller for the in-flight stream, used to stop on demand.
   private activeStreamController?: AbortController;
 
+  // Number of content parts carried over from the previous assistant turn when
+  // continuing after a tool call. Only the parts added after this index are new
+  // for this turn (and only they may be appended to the API history).
+  private afterToolCallBaseLength = 0;
+
+  /**
+   * Appends the assistant turn to the API history. When continuing after a tool
+   * call, the response shell is a clone of the previous message; only the newly
+   * added parts are pushed so old tool calls are not re-sent.
+   */
+  private pushAssistantTurn = (
+    responseMessage: ThreadMessageLike,
+    afterToolCall?: boolean
+  ) => {
+    let message = responseMessage;
+
+    if (afterToolCall && Array.isArray(message.content)) {
+      message = {
+        ...message,
+        content: message.content.slice(this.afterToolCallBaseLength),
+      };
+    }
+
+    this.pushSingleMessage(message);
+  };
+
   // Stop the current response: set the flag and abort the request so the
   // stream ends immediately even if the model is not producing chunks.
   stopMessage = (): void => {
@@ -226,6 +252,10 @@ class OpenAIProvider extends AbstractBaseProvider<
       previousMessage
     );
 
+    this.afterToolCallBaseLength = Array.isArray(responseMessage.content)
+      ? responseMessage.content.length
+      : 0;
+
     try {
       const convertedMessages = convertMessagesToModelFormat(messages);
       const systemMessage = this.buildSystemMessage(this.systemPrompt);
@@ -264,7 +294,7 @@ class OpenAIProvider extends AbstractBaseProvider<
                 )
               : responseMessage;
 
-            this.pushSingleMessage(responseMessage);
+            this.pushAssistantTurn(responseMessage, afterToolCall);
             isStreamComplete = true;
             break;
           }
@@ -309,7 +339,7 @@ class OpenAIProvider extends AbstractBaseProvider<
           if (hasUnfinalizedReasoning) {
             responseMessage = finalizeReasoningPart(responseMessage, true);
           }
-          this.pushSingleMessage(responseMessage);
+          this.pushAssistantTurn(responseMessage, afterToolCall);
           stream.controller.abort();
           this.stopFlag = false;
 
@@ -369,7 +399,21 @@ class OpenAIProvider extends AbstractBaseProvider<
 
     if (!toolResults.length) return message;
 
-    this.pushHistory(toolResults);
+    // Only send results that were not already pushed (a continuation message
+    // carries results from earlier turns too).
+    const existingIds = new Set(
+      this.prevMessages
+        .filter((m) => (m as { role?: string }).role === "tool")
+        .map((m) => (m as { tool_call_id?: string }).tool_call_id)
+    );
+
+    const newResults = toolResults.filter(
+      (result) => !existingIds.has(result.tool_call_id)
+    );
+
+    if (!newResults.length) return message;
+
+    this.pushHistory(newResults);
     yield* this.sendMessage([], true, message, withThinking);
 
     return message;
