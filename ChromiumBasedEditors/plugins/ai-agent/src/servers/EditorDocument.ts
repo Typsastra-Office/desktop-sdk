@@ -150,6 +150,78 @@ export class EditorDocumentTool {
   getDocumentHtml = async () =>
     this.callMethod("ConvertDocument", ["html", true, false, false, false]);
 
+  // Applies a named style (e.g. "Heading 1", "Title") to the selection or the
+  // paragraph at the cursor. Use this to give headings a real style.
+  setParagraphStyle = async (name: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var style = typeof doc.GetStyle === "function" ? doc.GetStyle(scope.name) : null;
+      if (!style) return false;
+      var target = doc.GetRangeBySelect();
+      if (target && typeof target.SetStyle === "function") {
+        target.SetStyle(style);
+        return true;
+      }
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (!p) return false;
+      p.SetStyle(style);
+      return true;
+    }, { name });
+
+  // Aligns the current paragraph (left | center | right | justify).
+  setAlignment = async (align: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var jc = scope.align === "justify" ? "both" : scope.align;
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (p && typeof p.SetJc === "function") {
+        p.SetJc(jc);
+        return true;
+      }
+      return false;
+    }, { align });
+
+  // Sets the text color of the selection, or of the paragraph at the cursor.
+  setTextColor = async (color: string) =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var c = scope.color;
+      if (typeof c === "string" && typeof Api.HexColor === "function")
+        c = Api.HexColor(c);
+      var target = doc.GetRangeBySelect();
+      var selected =
+        target && typeof target.GetText === "function" ? target.GetText() : "";
+      if (selected && typeof target.SetColor === "function") {
+        target.SetColor(c);
+        return true;
+      }
+      var p =
+        typeof doc.GetCurrentParagraph === "function"
+          ? doc.GetCurrentParagraph()
+          : null;
+      if (p && typeof p.SetColor === "function") {
+        p.SetColor(c);
+        return true;
+      }
+      return false;
+    }, { color });
+
+  // Inserts a page break.
+  insertPageBreak = async () =>
+    this.callEditorCommand(function () {
+      var doc = Api.GetDocument();
+      var p = Api.CreateParagraph();
+      if (typeof p.SetPageBreakBefore === "function") p.SetPageBreakBefore(true);
+      doc.InsertContent([p]);
+      return true;
+    });
+
   getDocumentText = async () =>
     this.callEditorCommand(function () {
       return Api.GetDocument().GetText();
@@ -258,6 +330,45 @@ export class EditorDocumentTool {
         inputSchema: { type: "object", properties: {} },
       },
       {
+        name: "set_paragraph_style",
+        description:
+          'Apply a named paragraph style (e.g. "Heading 1", "Heading 2", "Title", "Quote") to the selection or the paragraph at the cursor. Use get_styles to list names.',
+        inputSchema: {
+          type: "object",
+          properties: { name: { type: "string" } },
+          required: ["name"],
+        },
+      },
+      {
+        name: "set_alignment",
+        description: "Set the alignment of the current paragraph.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            align: {
+              type: "string",
+              enum: ["left", "center", "right", "justify"],
+            },
+          },
+          required: ["align"],
+        },
+      },
+      {
+        name: "set_text_color",
+        description:
+          "Set the text color (hex, e.g. #1F3864) of the selection, or of the paragraph at the cursor.",
+        inputSchema: {
+          type: "object",
+          properties: { color: { type: "string" } },
+          required: ["color"],
+        },
+      },
+      {
+        name: "insert_page_break",
+        description: "Insert a page break at the cursor.",
+        inputSchema: { type: "object", properties: {} },
+      },
+      {
         name: "get_document_text",
         description: "Return the full plain text of the open document.",
         inputSchema: { type: "object", properties: {} },
@@ -309,6 +420,18 @@ export class EditorDocumentTool {
         break;
       case "get_document_html":
         result = await this.getDocumentHtml();
+        break;
+      case "set_paragraph_style":
+        result = await this.setParagraphStyle(String(args.name ?? ""));
+        break;
+      case "set_alignment":
+        result = await this.setAlignment(String(args.align ?? "left"));
+        break;
+      case "set_text_color":
+        result = await this.setTextColor(String(args.color ?? ""));
+        break;
+      case "insert_page_break":
+        result = await this.insertPageBreak();
         break;
       case "get_document_text":
         result = await this.getDocumentText();
