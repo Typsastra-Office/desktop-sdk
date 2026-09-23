@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import type { TData } from "../base";
 import { createDesktopProxyFetch } from "../desktop-proxy";
 import { OpenAIProvider } from "../openai";
+import { getOpenCodeSessionId } from "../opencode-session";
 import { opencodeGoInfo } from "./info";
 
 /**
@@ -18,6 +19,7 @@ class OpenCodeGoProvider extends OpenAIProvider {
       baseURL,
       dangerouslyAllowBrowser: true,
       fetch: createDesktopProxyFetch(),
+      defaultHeaders: { "x-opencode-session": getOpenCodeSessionId() },
     });
   }
 
