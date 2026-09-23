@@ -1580,6 +1580,46 @@ export class EditorDocumentTool {
       });
     }
 
+    // Merge engine geometry (page/bounds) by paraId, when the engine exposes it.
+    let geometryAvailable = false;
+    try {
+      const geoRaw = await this.callMethod("GetAgentDocumentSnapshot", []);
+      const geo =
+        typeof geoRaw === "string"
+          ? (JSON.parse(geoRaw) as {
+              paragraphs?: Array<Record<string, unknown>>;
+            })
+          : (geoRaw as { paragraphs?: Array<Record<string, unknown>> });
+      if (geo && Array.isArray(geo.paragraphs)) {
+        const byId = new Map<number, Record<string, unknown>>();
+        for (const g of geo.paragraphs) {
+          if (g && g.paraId !== null && g.paraId !== undefined)
+            byId.set(Number(g.paraId), g);
+        }
+        for (const el of model.elements) {
+          if (el.kind !== "paragraph" || !el.id) continue;
+          const pid = Number(String(el.id).split(":")[1]);
+          const g = byId.get(pid);
+          if (g) {
+            el.geometry = {
+              absPage: Number(g.absPage ?? 0),
+              pagesCount:
+                g.pagesCount === undefined ? undefined : Number(g.pagesCount),
+              linesCount:
+                g.linesCount === undefined ? undefined : Number(g.linesCount),
+              top: g.top === undefined ? undefined : Number(g.top),
+              bottom: g.bottom === undefined ? undefined : Number(g.bottom),
+              left: g.left === undefined ? undefined : Number(g.left),
+              right: g.right === undefined ? undefined : Number(g.right),
+            };
+            geometryAvailable = true;
+          }
+        }
+      }
+    } catch {
+      // geometry not available (older engine); skip
+    }
+
     const findings = computeFindings(model);
     const nodes = (model.elements ?? []).slice(0, 200) as DocElement[];
 
@@ -1591,10 +1631,10 @@ export class EditorDocumentTool {
     return JSON.stringify({
       schema: "tysastra.agent.doc/1.0",
       coverage: {
-        pagination: "absent",
-        text_geometry: "absent",
+        pagination: geometryAvailable ? "partial" : "absent",
+        text_geometry: geometryAvailable ? "partial" : "absent",
         resolved_typography: "partial",
-        table_geometry: "partial",
+        table_geometry: "absent",
         drawing_appearance: "absent",
         header_footer: "absent",
       },

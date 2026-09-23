@@ -74,7 +74,13 @@ offending node so the agent can act on it directly.
 | `MISSING_CAPTION` | advisory | a table or image has no caption |
 | `TOC_MISSING` | advisory | several headings but no table of contents |
 | `HEADING_LEVEL_SKIP` | advisory | heading levels jump (e.g. Heading 1 -> Heading 3) |
+| `ORPHAN_HEADING` | advisory | a heading ends a page; its content starts on the next page |
 | `STYLE_UNUSED` | advisory | a defined style that no content uses |
+
+Phase 1 adds geometry: paragraphs may carry
+`geometry = { absPage, pagesCount, linesCount, top, bottom, left, right }`
+(measurements in mm) from the editor engine; `coverage.pagination` /
+`coverage.text_geometry` become `partial` when present.
 
 Phase 1 adds geometry-based codes: `PAGE_OVERFLOW`, `COLUMN_OVERFLOW`,
 `HEADER_OVERLAP`, `HEADER_CLIPPED`, `TABLE_WIDTH_OVERFLOW`, `CELL_TEXT_CLIPPED`,

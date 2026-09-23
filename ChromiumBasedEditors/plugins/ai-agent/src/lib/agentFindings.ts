@@ -27,6 +27,16 @@ export type RunModel = {
   direct?: boolean;
 };
 
+export type ParagraphGeometry = {
+  absPage: number;
+  pagesCount?: number;
+  linesCount?: number;
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
+};
+
 export type ParagraphElement = {
   kind: "paragraph";
   index: number;
@@ -36,6 +46,8 @@ export type ParagraphElement = {
   text: string;
   numbering: boolean;
   runs: RunModel[];
+  /** Page geometry from the editor engine (phase 1). */
+  geometry?: ParagraphGeometry;
 };
 
 export type TableElement = {
@@ -168,6 +180,37 @@ export const computeFindings = (model: DocModel): Finding[] => {
       });
     }
     lastLevel = level;
+  }
+
+  // A heading that ends a page: its next content starts on a later page.
+  for (let i = 0; i < els.length; i++) {
+    const e = els[i];
+    if (e.kind !== "paragraph" || !HEADING_RE.test(e.style) || !e.geometry)
+      continue;
+
+    let nextPage: number | undefined;
+    for (let j = i + 1; j < els.length; j++) {
+      const nx = els[j];
+      if (nx.kind === "toc") continue;
+      if (nx.kind === "paragraph" && HEADING_RE.test(nx.style)) {
+        nextPage = nx.geometry?.absPage;
+        break;
+      }
+      if (nx.kind === "paragraph" && nx.text.trim()) {
+        nextPage = nx.geometry?.absPage;
+        break;
+      }
+      if (nx.kind === "table") break;
+    }
+
+    if (typeof nextPage === "number" && nextPage > e.geometry.absPage) {
+      findings.push({
+        code: "ORPHAN_HEADING",
+        severity: "advisory",
+        nodeId: nodeIdOf(e),
+        message: `Heading ends page ${e.geometry.absPage + 1}; its content starts on page ${nextPage + 1}`,
+      });
+    }
   }
 
   // Tables and images without a caption.

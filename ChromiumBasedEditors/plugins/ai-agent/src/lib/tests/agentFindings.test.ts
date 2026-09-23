@@ -163,6 +163,36 @@ describe("computeFindings", () => {
     expect(computeFindings(model)[0].nodeId).toBe("paragraph:1763520491");
   });
 
+  it("flags ORPHAN_HEADING when a heading ends a page", () => {
+    const h = heading(0, "Intro");
+    h.geometry = { absPage: 0 };
+    const b = body(1, "text");
+    b.geometry = { absPage: 1 };
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      elements: [h, b],
+    };
+    expect(computeFindings(model).map((f) => f.code)).toContain(
+      "ORPHAN_HEADING"
+    );
+  });
+
+  it("does not flag ORPHAN_HEADING when the heading shares the page", () => {
+    const h = heading(0, "Intro");
+    h.geometry = { absPage: 0 };
+    const b = body(1, "text");
+    b.geometry = { absPage: 0 };
+    const model: DocModel = {
+      stylesDefined: [],
+      stylesUsed: [],
+      elements: [h, b],
+    };
+    expect(computeFindings(model).map((f) => f.code)).not.toContain(
+      "ORPHAN_HEADING"
+    );
+  });
+
   it("summarizes by severity and code", () => {
     const model: DocModel = {
       stylesDefined: [],
