@@ -637,7 +637,8 @@ export class EditorDocumentTool {
             if (font && tp && typeof tp.SetFontFamily === "function")
               tp.SetFontFamily(font);
             if (def.size && tp && typeof tp.SetFontSize === "function")
-              tp.SetFontSize(Number(def.size));
+              // The builder's SetFontSize takes half-points (hps).
+              tp.SetFontSize(Number(def.size) * 2);
             if (typeof def.bold === "boolean" && tp && typeof tp.SetBold === "function")
               tp.SetBold(Boolean(def.bold));
             if (typeof def.italic === "boolean" && tp && typeof tp.SetItalic === "function")
@@ -1083,7 +1084,7 @@ export class EditorDocumentTool {
       for (var pi = 0; pi < pc; pi++) {
         var para = content.GetElement(pi);
         if (para.SetJc) para.SetJc("center");
-        setRuns(para, "#FFFFFF", pi === 0 ? 30 : 13, pi === 0, pi === 1);
+        setRuns(para, "#FFFFFF", pi === 0 ? 60 : 26, pi === 0, pi === 1);
       }
       if (scope.meta) {
         var mp = Api.CreateParagraph();
@@ -1094,7 +1095,7 @@ export class EditorDocumentTool {
           var run = mp.GetElement(r);
           if (run && run.SetColor) {
             run.SetColor(Api.HexColor("#5A6B7B"));
-            run.SetFontSize(11);
+            run.SetFontSize(22);
             run.SetItalic(true);
           }
         }
@@ -1150,7 +1151,7 @@ export class EditorDocumentTool {
       cell.SetCellMarginLeft(240);
       cell.SetCellMarginRight(200);
       cell.SetCellBorderLeft("single", 30, 0, ac[0], ac[1], ac[2]);
-      setRuns(cell.GetContent(), "#20303C", 11);
+      setRuns(cell.GetContent(), "#20303C", 22);
       return true;
     }, { accent });
   };
@@ -1211,7 +1212,7 @@ export class EditorDocumentTool {
           var run = p.GetElement(r);
           if (run && run.SetColor) {
             run.SetColor(Api.HexColor("#5A6B7B"));
-            run.SetFontSize(bold && i === 0 ? 9 : 8);
+            run.SetFontSize(bold && i === 0 ? 18 : 16);
             if (bold && i === 0 && run.SetBold) run.SetBold(true);
           }
         }
