@@ -7595,8 +7595,13 @@ void CCefView::Apply(NSEditorApi::CAscMenuEvent* pEvent)
 		else
 		{
 			int nFileType = pData->get_FileType();
-			if (nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF ||
-				nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDFA)
+			// Only document editors have a WordControl layout to export here.
+			// Spreadsheet, presentation, and PDF editors use the normal converter.
+			if ((m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocument) ||
+				 m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocumentMasterForm) ||
+				 m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocumentMasterOForm)) &&
+				(nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF ||
+				 nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDFA))
 			{
 				CefRefPtr<CefFrame> frame = m_pInternal->GetBrowser()
 					? m_pInternal->GetBrowser()->GetFrame("frameEditor") : nullptr;
