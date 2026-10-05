@@ -7595,28 +7595,6 @@ void CCefView::Apply(NSEditorApi::CAscMenuEvent* pEvent)
 		else
 		{
 			int nFileType = pData->get_FileType();
-			// Only document editors have a WordControl layout to export here.
-			// Spreadsheet, presentation, and PDF editors use the normal converter.
-			if ((m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocument) ||
-				 m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocumentMasterForm) ||
-				 m_pInternal->m_nEditorType == static_cast<int>(AscEditorType::etDocumentMasterOForm)) &&
-				(nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF ||
-				 nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDFA))
-			{
-				CefRefPtr<CefFrame> frame = m_pInternal->GetBrowser()
-					? m_pInternal->GetBrowser()->GetFrame("frameEditor") : nullptr;
-				if (frame)
-				{
-					CefRefPtr<CefValue> pathValue = CefValue::Create();
-					pathValue->SetString(sPath);
-					std::wstring quotedPath = CefWriteJSON(pathValue, JSON_WRITER_DEFAULT).ToWString();
-					std::wstring code = L"window.DesktopOfflineAppDocumentSavePdfFromCurrentLayout(" +
-						std::to_wstring(nFileType) + L"," + quotedPath + L"," +
-						(pData->get_EnhancedUnicode() ? L"true" : L"false") + L");";
-					frame->ExecuteJavaScript(code, frame->GetURL(), 0);
-					break;
-				}
-			}
 			bool bOptionsReady = true;
 			if (nFileType == AVS_OFFICESTUDIO_FILE_CROSSPLATFORM_PDF)
 				bOptionsReady = SetJsonBoolean(m_pInternal->m_oLocalInfo.m_oInfo.m_sSaveJsonParams,
